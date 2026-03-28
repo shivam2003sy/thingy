@@ -1,11 +1,13 @@
 import React, { useEffect } from 'react';
-import { View, Image } from 'react-native';
+import { View } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
 import { useUserStore } from '../store/userStore';
+
+import FastImage from "@d11/react-native-fast-image";
 
 interface SplashScreenProps {
   onFinish: (hasCompletedOnboarding: boolean) => void;
@@ -35,7 +37,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   return (
     <View className="flex-1 bg-black items-center justify-center">
       <Animated.View style={[animatedStyle, { width: '100%', height: '100%', backgroundColor: 'black' }]}>
-        <Image
+        <FastImage
           source={require('../assets/images/splash.gif')}
           style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
