@@ -3,7 +3,7 @@ import { View, Text, SafeAreaView, TouchableOpacity, Animated, ScrollView } from
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useGameStore } from '../store/gameStore';
-import { useUserStore } from '../store/userStore';
+import { useAuthStore } from '../store/authStore';
 import { PREDICTION_OPTIONS } from '../utils/mockData';
 import { resultEmoji, resultLabel, coinsForResult, xpForResult } from '../services/gameService';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -16,7 +16,8 @@ type Props = {
 export default function ResultScreen({ navigation }: Props) {
   const { winner, myTotalScore, opponentTotalScore, rounds, opponentName, resetGame } =
     useGameStore();
-  const { winStreak } = useUserStore();
+  const { user } = useAuthStore();
+  const winStreak = user?.winStreak ?? 0;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const trophyAnim = useRef(new Animated.Value(0)).current;
@@ -40,7 +41,7 @@ export default function ResultScreen({ navigation }: Props) {
 
   const handleHome = () => {
     resetGame();
-    navigation.replace('Home');
+    navigation.replace('Tabs');
   };
 
   const trophyEmoji = winner === 'me' ? '🏆' : winner === 'opponent' ? '💔' : '🤝';

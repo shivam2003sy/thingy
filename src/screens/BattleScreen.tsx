@@ -12,9 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { socketService } from '../socket/socketService';
 import { useGameStore } from '../store/gameStore';
-import { useUserStore } from '../store/userStore';
-import { calculatePoints, resultEmoji, resultLabel, coinsForResult, xpForResult } from '../services/gameService';
-import { determineWinner } from '../services/gameService';
+import { useAuthStore } from '../store/authStore';
+import { resultEmoji, resultLabel, coinsForResult, xpForResult, determineWinner } from '../services/gameService';
 import { PREDICTION_OPTIONS } from '../utils/mockData';
 import { APP_CONFIG } from '../config/constants';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -45,7 +44,7 @@ export default function BattleScreen({ navigation }: Props) {
     finishGame,
   } = useGameStore();
 
-  const { addCoins, addXP, recordWin, recordLoss, recordDraw } = useUserStore();
+  const { updateTokens, updateStats } = useAuthStore();
 
   const timerProgress = useRef(new Animated.Value(1)).current;
   const timerAnimation = useRef<Animated.CompositeAnimation | null>(null);
@@ -105,38 +104,31 @@ export default function BattleScreen({ navigation }: Props) {
     }
   }, [timeLeft]);
 
-  // Socket listeners
+  // Socket listeners — ballResult now carries opponent prediction + server-computed points
   useEffect(() => {
-    socketService.on('opponentPrediction', ({ optionId }: { optionId: string }) => {
-      setOpponentPredictionId(optionId);
-      const { scenario: sc, currentBall: ball, runsScored: scored } = useGameStore.getState();
-      if (sc) {
-        const runsLeft = sc.runsNeeded - scored;
-        const ballsLeft = sc.ballsRemaining - (ball - 1);
-        socketService.revealBall(ball, runsLeft, ballsLeft);
-      }
-    });
-
-    socketService.on('ballResult', result => {
-      const { myPrediction: mp, opponentPredictionId: oppId } = useGameStore.getState();
-      const myPts = mp ? calculatePoints(mp.optionId, result) : 0;
-      const oppPts = oppId ? calculatePoints(oppId, result) : 0;
-
-      setBallResult(result, myPts, oppPts);
-      setPointsFlash({ me: myPts, opp: oppPts });
+    socketService.on('ballResult', (result: {
+      ball: number; outcome: string; runs: number; isWicket: boolean; commentary: string;
+      myPoints: number; opponentPoints: number; opponentPredictionId: string;
+    }) => {
+      setOpponentPredictionId(result.opponentPredictionId);
+      setBallResult(
+        { ball: result.ball, outcome: result.outcome as any, runs: result.runs, isWicket: result.isWicket, commentary: result.commentary },
+        result.myPoints,
+        result.opponentPoints,
+      );
+      setPointsFlash({ me: result.myPoints, opp: result.opponentPoints });
 
       resultScale.setValue(0);
-      Animated.spring(resultScale, {
-        toValue: 1,
-        friction: 6,
-        tension: 80,
-        useNativeDriver: true,
-      }).start();
+      Animated.spring(resultScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }).start();
+    });
+
+    socketService.on('opponentDisconnected', () => {
+      navigation.replace('Tabs');
     });
 
     return () => {
-      socketService.off('opponentPrediction');
       socketService.off('ballResult');
+      socketService.off('opponentDisconnected');
     };
   }, []);
 
@@ -159,18 +151,16 @@ export default function BattleScreen({ navigation }: Props) {
       stopTimer();
       const winner = determineWinner(myS, oppS);
       finishGame(winner);
+      const { user: u } = useAuthStore.getState();
       if (winner === 'me') {
-        recordWin();
-        addCoins(coinsForResult('me'));
-        addXP(xpForResult('me'));
+        updateStats({ totalWins: (u?.totalWins ?? 0) + 1, winStreak: (u?.winStreak ?? 0) + 1, gamesPlayed: (u?.gamesPlayed ?? 0) + 1, xp: (u?.xp ?? 0) + xpForResult('me') });
+        updateTokens(coinsForResult('me'));
       } else if (winner === 'opponent') {
-        recordLoss();
-        addCoins(coinsForResult('opponent'));
-        addXP(xpForResult('opponent'));
+        updateStats({ winStreak: 0, gamesPlayed: (u?.gamesPlayed ?? 0) + 1, xp: (u?.xp ?? 0) + xpForResult('opponent') });
+        updateTokens(coinsForResult('opponent'));
       } else {
-        recordDraw();
-        addCoins(coinsForResult('draw'));
-        addXP(xpForResult('draw'));
+        updateStats({ gamesPlayed: (u?.gamesPlayed ?? 0) + 1, xp: (u?.xp ?? 0) + xpForResult('draw') });
+        updateTokens(coinsForResult('draw'));
       }
       navigation.replace('Result');
     } else {

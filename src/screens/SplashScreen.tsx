@@ -17,7 +17,8 @@ export default function SplashScreen({ navigation }: Props) {
 
     const timer = setTimeout(() => {
       opacity.value = withTiming(0, { duration: 500 });
-      setTimeout(() => navigation.replace('Home'), 500);
+      const { user } = require('../store/authStore').useAuthStore.getState();
+      setTimeout(() => navigation.replace(user ? 'Tabs' : 'Auth'), 500);
     }, 2500);
 
     return () => clearTimeout(timer);

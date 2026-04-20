@@ -3,7 +3,7 @@ import { View, Text, SafeAreaView, Animated, TouchableOpacity } from 'react-nati
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { socketService } from '../socket/socketService';
 import { useGameStore } from '../store/gameStore';
-import { useUserStore } from '../store/userStore';
+import { useAuthStore } from '../store/authStore';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { MatchScenario } from '../types/game';
 
@@ -17,7 +17,8 @@ export default function MatchmakingScreen({ navigation }: Props) {
   const dotsAnim = useRef(new Animated.Value(0)).current;
 
   const { startMatchmaking, setMatchFound } = useGameStore();
-  const { username } = useUserStore();
+  const { user } = useAuthStore();
+  const username = user?.username ?? 'Player';
 
   useEffect(() => {
     startMatchmaking();
@@ -50,7 +51,8 @@ export default function MatchmakingScreen({ navigation }: Props) {
       },
     );
 
-    socketService.findMatch();
+    const { user: u } = useAuthStore.getState();
+    socketService.findMatch(u?.id ?? 'guest', u?.username ?? 'Player');
 
     return () => {
       pulse.stop();
