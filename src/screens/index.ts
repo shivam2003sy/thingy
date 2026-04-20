@@ -1,10 +1,5 @@
-export { SplashScreen } from './SplashScreen';
-export { HookScreens } from './HookScreens';
-export { IdentitySelectionScreen } from './IdentitySelectionScreen';
-export { InstantRewardScreen } from './InstantRewardScreen';
-export { SocialHookScreen } from './SocialHookScreen';
-export { PermissionsScreen } from './PermissionsScreen';
-export { SignUpScreen } from './SignUpScreen';
-export { FirstItemScreen } from './FirstItemScreen';
-export { RewardLoopScreen } from './RewardLoopScreen';
-export { DashboardScreen } from './DashboardScreen';
+export { default as SplashScreen } from './SplashScreen';
+export { default as HomeScreen } from './HomeScreen';
+export { default as MatchmakingScreen } from './MatchmakingScreen';
+export { default as BattleScreen } from './BattleScreen';
+export { default as ResultScreen } from './ResultScreen';

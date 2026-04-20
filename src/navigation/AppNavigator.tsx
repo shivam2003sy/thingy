@@ -1,42 +1,34 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SplashScreen } from '../screens/SplashScreen';
-import { OnboardingNavigator } from './OnboardingNavigator';
-import { DashboardScreen } from '../screens/DashboardScreen';
+import SplashScreen from '../screens/SplashScreen';
+import HomeScreen from '../screens/HomeScreen';
+import MatchmakingScreen from '../screens/MatchmakingScreen';
+import BattleScreen from '../screens/BattleScreen';
+import ResultScreen from '../screens/ResultScreen';
 
-type RootStackParamList = {
+export type RootStackParamList = {
   Splash: undefined;
-  Onboarding: undefined;
-  Dashboard: undefined;
+  Home: undefined;
+  Matchmaking: undefined;
+  Battle: undefined;
+  Result: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
-  const [initialRoute, setInitialRoute] = useState<'Splash' | 'Onboarding' | 'Dashboard'>('Splash');
-  const [showSplash, setShowSplash] = useState(true);
-  
-  const handleSplashFinish = (hasCompletedOnboarding: boolean) => {
-    setShowSplash(false);
-    setInitialRoute(hasCompletedOnboarding ? 'Dashboard' : 'Onboarding');
-  };
-  
-  if (showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
-  }
-  
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{
-          headerShown: false,
-          animation: 'fade',
-        }}
+        initialRouteName="Splash"
+        screenOptions={{ headerShown: false, animation: 'fade' }}
       >
-        <Stack.Screen name="Onboarding" component={OnboardingNavigator} />
-        <Stack.Screen name="Dashboard" component={DashboardScreen} />
+        <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Matchmaking" component={MatchmakingScreen} />
+        <Stack.Screen name="Battle" component={BattleScreen} />
+        <Stack.Screen name="Result" component={ResultScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

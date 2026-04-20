@@ -1,48 +1,39 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
-import { useUserStore } from '../store/userStore';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import FastImage from '@d11/react-native-fast-image';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 
-import FastImage from "@d11/react-native-fast-image";
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Splash'>;
+};
 
-interface SplashScreenProps {
-  onFinish: (hasCompletedOnboarding: boolean) => void;
-}
-
-export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
+export default function SplashScreen({ navigation }: Props) {
   const opacity = useSharedValue(0);
-  const hasCompletedOnboarding = useUserStore((state) => state.hasCompletedOnboarding);
-  
+
   useEffect(() => {
     opacity.value = withTiming(1, { duration: 500 });
-    
+
     const timer = setTimeout(() => {
       opacity.value = withTiming(0, { duration: 500 });
-      setTimeout(() => {
-        onFinish(hasCompletedOnboarding);
-      }, 500);
+      setTimeout(() => navigation.replace('Home'), 500);
     }, 2500);
-    
+
     return () => clearTimeout(timer);
-  }, [hasCompletedOnboarding]);
-  
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-  
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
   return (
-    <View className="flex-1 bg-black items-center justify-center">
-      <Animated.View style={[animatedStyle, { width: '100%', height: '100%', backgroundColor: 'black' }]}>
+    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <Animated.View style={[animatedStyle, { flex: 1 }]}>
         <FastImage
           source={require('../assets/images/splash.gif')}
           style={{ width: '100%', height: '100%' }}
-          resizeMode="contain"
+          resizeMode={FastImage.resizeMode.contain}
         />
       </Animated.View>
     </View>
   );
-};
+}
