@@ -2,7 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, SafeAreaView, Animated, ActivityIndicator, Image,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import LinearGradient from 'react-native-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useAuthStore } from '../store/authStore';

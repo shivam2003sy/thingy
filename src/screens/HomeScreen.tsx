@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, SafeAreaView,
   Animated, RefreshControl, Pressable,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import LinearGradient from 'react-native-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/authStore';
 import { socketService } from '../socket/socketService';

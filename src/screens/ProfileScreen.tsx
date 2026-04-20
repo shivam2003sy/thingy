@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, Switch,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import LinearGradient from 'react-native-linear-gradient';
 import { useAuthStore } from '../store/authStore';
 
 const D = {
