@@ -13,8 +13,9 @@ const D = {
 
 const LEVEL_NAMES = ['Rookie', 'Amateur', 'Pro', 'Expert', 'Elite', 'Legend'];
 
-export default function ProfileScreen({ navigation }: { navigation: any }) {
+export default function ProfileScreen() {
   const { user, signOut } = useAuthStore();
+
   const [notifs, setNotifs] = useState(true);
 
   const levelName = LEVEL_NAMES[Math.min((user?.level ?? 1) - 1, LEVEL_NAMES.length - 1)];
@@ -48,17 +49,6 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
             <Text style={{ color: D.text, fontWeight: '800', fontSize: 18, flex: 1 }}>Profile</Text>
-            {user?.isGuest && (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Auth')}
-                style={{
-                  backgroundColor: D.primary, borderRadius: 99,
-                  paddingHorizontal: 14, paddingVertical: 6,
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>Sign In</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* Avatar + name */}
@@ -123,8 +113,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
 
         {/* Token balance */}
         <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-          <TouchableOpacity onPress={() => navigation.navigate('Wallet')}>
-            <LinearGradient
+          <LinearGradient
               colors={['#00D09C', '#00897B']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={{
@@ -141,8 +130,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
                 </Text>
               </View>
               <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 22 }}>→</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          </LinearGradient>
         </View>
 
         {/* Settings */}
@@ -173,44 +161,17 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
             <SettingRow icon="⭐" label="Rate App" onPress={() => {}} />
           </View>
 
-          {/* Guest upgrade prompt */}
-          {user?.isGuest && (
-            <View style={{
-              marginTop: 20, backgroundColor: D.primary + '15',
-              borderRadius: 16, padding: 18,
-              borderWidth: 1, borderColor: D.primary + '30',
-            }}>
-              <Text style={{ color: D.primary, fontWeight: '700', fontSize: 14, marginBottom: 4 }}>
-                Save Your Progress
-              </Text>
-              <Text style={{ color: D.textSec, fontSize: 12, marginBottom: 14 }}>
-                Sign in with Google to keep your tokens & stats forever
-              </Text>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Auth')}
-                style={{
-                  backgroundColor: D.primary, borderRadius: 12,
-                  paddingVertical: 12, alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Sign In with Google</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
           {/* Sign out */}
-          {!user?.isGuest && (
-            <TouchableOpacity
-              onPress={handleSignOut}
-              style={{
-                marginTop: 20, borderRadius: 14, padding: 16,
-                alignItems: 'center', borderWidth: 1, borderColor: D.live + '40',
-                backgroundColor: D.live + '10',
-              }}
-            >
-              <Text style={{ color: D.live, fontWeight: '700', fontSize: 15 }}>Sign Out</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={handleSignOut}
+            style={{
+              marginTop: 20, borderRadius: 14, padding: 16,
+              alignItems: 'center', borderWidth: 1, borderColor: D.live + '40',
+              backgroundColor: D.live + '10',
+            }}
+          >
+            <Text style={{ color: D.live, fontWeight: '700', fontSize: 15 }}>Sign Out</Text>
+          </TouchableOpacity>
 
           <Text style={{ color: '#2A3A4A', fontSize: 11, textAlign: 'center', marginTop: 24 }}>
             Thingy v1.0.0 · Made with ❤️ for cricket fans

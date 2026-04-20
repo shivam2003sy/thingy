@@ -20,7 +20,7 @@ const D = {
 };
 
 export default function AuthScreen({ navigation }: Props) {
-  const { signInWithGoogle, continueAsGuest, isLoading } = useAuthStore();
+  const { signInWithGoogle, isLoading } = useAuthStore();
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -56,10 +56,6 @@ export default function AuthScreen({ navigation }: Props) {
     } catch (err: any) {
       console.error('Google sign in error:', err);
     }
-  };
-
-  const handleGuest = async () => {
-    await continueAsGuest();
   };
 
   return (
@@ -144,24 +140,6 @@ export default function AuthScreen({ navigation }: Props) {
                   </Text>
                 </>
               )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleGuest}
-              disabled={isLoading}
-              style={{
-                borderRadius: 16,
-                paddingVertical: 18,
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: D.border,
-                backgroundColor: D.card,
-              }}
-              activeOpacity={0.85}
-            >
-              <Text style={{ color: D.textSec, fontSize: 15, fontWeight: '600' }}>
-                Continue as Guest
-              </Text>
             </TouchableOpacity>
 
             <Text style={{ color: '#3A4D5C', fontSize: 11, textAlign: 'center', marginTop: 4 }}>
