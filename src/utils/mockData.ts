@@ -1,221 +1,158 @@
-import { Product, LeaderboardUser, Personality, Badge, HookScreen } from '../types';
+import { MatchScenario, PredictionOption, BallOutcome } from '../types/game';
 
-export const PERSONALITIES: Personality[] = [
+export const PREDICTION_OPTIONS: PredictionOption[] = [
+  { id: 'dot', label: 'Dot Ball', icon: '⚫', value: 0 },
+  { id: 'single', label: '1-2 Runs', icon: '🏃', value: 1 },
+  { id: 'boundary', label: 'FOUR!', icon: '🏏', value: 4 },
+  { id: 'six', label: 'SIX!', icon: '🔥', value: 6 },
+  { id: 'wicket', label: 'WICKET!', icon: '❌', value: 'W' },
+  { id: 'extra', label: 'Extra', icon: '↗️', value: 'E' },
+];
+
+export const MATCH_SCENARIOS: Omit<MatchScenario, 'id'>[] = [
   {
-    id: 'smart',
-    icon: 'brain',
-    title: 'Smart but questionable',
-    description: 'You research everything... then buy it anyway',
+    category: 'last_over',
+    title: '🔥 Last Over Thriller',
+    context: 'CSK needs 14 off last over',
+    battingTeam: 'CSK',
+    bowlingTeam: 'MI',
+    battingTeamColor: '#FFDD00',
+    bowlingTeamColor: '#005DA0',
+    runsNeeded: 14,
+    ballsRemaining: 6,
+    wicketsLeft: 3,
+    strikerName: 'MS Dhoni',
+    bowlerName: 'J Bumrah',
+    overNumber: 20,
   },
   {
-    id: 'unhinged',
-    icon: 'cart',
-    title: 'Unhinged spender',
-    description: 'Cart first, think never',
+    category: 'chase_control',
+    title: '🏏 Chase Control',
+    context: 'RCB needs 28 off 12',
+    battingTeam: 'RCB',
+    bowlingTeam: 'KKR',
+    battingTeamColor: '#D00027',
+    bowlingTeamColor: '#6B46C1',
+    runsNeeded: 28,
+    ballsRemaining: 12,
+    wicketsLeft: 5,
+    strikerName: 'V Kohli',
+    bowlerName: 'S Narine',
+    overNumber: 19,
   },
   {
-    id: 'meme',
-    icon: 'emoticon-happy',
-    title: 'Meme lord',
-    description: 'If it\'s not meme-worthy, it\'s not worth buying',
+    category: 'super_over',
+    title: '⚡ SUPER OVER!',
+    context: 'Super Over — anything can happen',
+    battingTeam: 'SRH',
+    bowlingTeam: 'DC',
+    battingTeamColor: '#F97316',
+    bowlingTeamColor: '#0033CC',
+    runsNeeded: 13,
+    ballsRemaining: 6,
+    wicketsLeft: 2,
+    strikerName: 'H Pandya',
+    bowlerName: 'A Nortje',
+    overNumber: 21,
   },
   {
-    id: 'collector',
-    icon: 'shopping',
-    title: 'Collector gremlin',
-    description: 'Must. Have. Everything.',
+    category: 'powerplay',
+    title: '💨 Powerplay Special',
+    context: 'MI smashing it in powerplay',
+    battingTeam: 'MI',
+    bowlingTeam: 'CSK',
+    battingTeamColor: '#005DA0',
+    bowlingTeamColor: '#FFDD00',
+    runsNeeded: 0,
+    ballsRemaining: 6,
+    wicketsLeft: 10,
+    strikerName: 'R Sharma',
+    bowlerName: 'D Chahar',
+    overNumber: 3,
+  },
+  {
+    category: 'new_batsman',
+    title: '🆕 New Man In',
+    context: 'Wicket on last ball — new batsman',
+    battingTeam: 'KKR',
+    bowlingTeam: 'RCB',
+    battingTeamColor: '#6B46C1',
+    bowlingTeamColor: '#D00027',
+    runsNeeded: 22,
+    ballsRemaining: 9,
+    wicketsLeft: 4,
+    strikerName: 'S Iyer',
+    bowlerName: 'M Siraj',
+    overNumber: 18,
   },
 ];
 
-export const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: 'Mini Screaming Chicken',
-    icon: 'bird',
-    description: 'Screams when squeezed. Therapy not included.',
-    price: 299,
-    rarity: 'common',
-  },
-  {
-    id: '2',
-    name: 'Inflatable Crown',
-    icon: 'crown',
-    description: 'Rule your kingdom of chaos',
-    price: 499,
-    rarity: 'rare',
-  },
-  {
-    id: '3',
-    name: 'Glow-in-Dark Banana',
-    icon: 'food-apple',
-    description: 'Potassium that glows. Science!',
-    price: 399,
-    rarity: 'common',
-  },
-  {
-    id: '4',
-    name: 'Tiny Cowboy Hat',
-    icon: 'hat-fedora',
-    description: 'Yeehaw but make it tiny',
-    price: 599,
-    rarity: 'rare',
-  },
-  {
-    id: '5',
-    name: 'Screaming Banana',
-    icon: 'food-apple',
-    description: 'Like a regular banana but LOUDER',
-    price: 799,
-    rarity: 'legendary',
-  },
-  {
-    id: '6',
-    name: 'Golden Duck',
-    icon: 'duck',
-    description: 'Quack in style',
-    price: 1299,
-    rarity: 'legendary',
-  },
-  {
-    id: '7',
-    name: 'Disco Ball Egg',
-    icon: 'egg',
-    description: 'Party in your pocket',
-    price: 449,
-    rarity: 'rare',
-  },
-  {
-    id: '8',
-    name: 'Cursed Plushie',
-    icon: 'teddy-bear',
-    description: 'Definitely not haunted (probably)',
-    price: 666,
-    rarity: 'legendary',
-  },
-  {
-    id: '9',
-    name: 'RGB Socks',
-    icon: 'shoe-sneaker',
-    description: 'Your feet deserve gaming vibes',
-    price: 349,
-    rarity: 'common',
-  },
-  {
-    id: '10',
-    name: 'Pocket Void',
-    icon: 'circle-outline',
-    description: 'Stare into the abyss, portably',
-    price: 999,
-    rarity: 'legendary',
-  },
-  {
-    id: '11',
-    name: 'Anxiety Cube',
-    icon: 'dice-6',
-    description: 'Click, spin, regret',
-    price: 299,
-    rarity: 'common',
-  },
-  {
-    id: '12',
-    name: 'Motivational Rock',
-    icon: 'stone',
-    description: 'It believes in you',
-    price: 199,
-    rarity: 'common',
-  },
+export const OPPONENT_NAMES = [
+  'CricketGod_99',
+  'IPLFanatic',
+  'SixMachine',
+  'DotBallKing',
+  'ThalaFan7',
+  'Hitman_Lover',
+  'Kohli12th',
+  'BumrahBros',
+  'WicketHunter',
+  'PowerplayPro',
+  'SuperOverAce',
+  'LastOverLegend',
 ];
 
-export const MOCK_LEADERBOARD: LeaderboardUser[] = [
-  {
-    username: '@user123',
-    action: 'bought',
-    item: 'Screaming Banana',
-    icon: 'food-apple',
-  },
-  {
-    username: '@lolking',
-    action: 'unlocked',
-    item: 'Golden Duck',
-    icon: 'duck',
-  },
-  {
-    username: '@chaosqueen',
-    action: 'flexing',
-    item: 'Level 5',
-    icon: 'crown',
-  },
-  {
-    username: '@memegod',
-    action: 'copped',
-    item: 'Cursed Plushie',
-    icon: 'teddy-bear',
-  },
-  {
-    username: '@vibecheck',
-    action: 'unlocked',
-    item: 'Certified Weird',
-    icon: 'star-circle',
-  },
-];
-
-export const BADGES: Badge[] = [
-  {
-    id: 'certified-weird',
-    name: 'Certified Weird',
-    icon: 'star-circle',
-    description: 'Made your first chaotic purchase',
-  },
-  {
-    id: 'coin-collector',
-    name: 'Coin Collector',
-    icon: 'cash',
-    description: 'Earned 1000 chaos coins',
-  },
-  {
-    id: 'meme-master',
-    name: 'Meme Master',
-    icon: 'emoticon-happy',
-    description: 'Shared 5 memes',
-  },
-  {
-    id: 'chaos-starter',
-    name: 'Chaos Starter',
-    icon: 'fire',
-    description: 'Completed onboarding',
-  },
-];
-
-export const HOOK_SCREENS: HookScreen[] = [
-  {
-    id: 1,
-    title: 'Your wallet called...\nit\'s scared',
-    icon: 'cash-remove',
-    gradient: ['#FF6B6B', '#4ECDC4'],
-  },
-  {
-    id: 2,
-    title: 'Shopping but make it\nunhinged',
-    icon: 'cart',
-    gradient: ['#A8E6CF', '#FFD3B6'],
-  },
-  {
-    id: 3,
-    title: 'Get ready for\nchaos mode',
-    icon: 'target',
-    gradient: ['#FF8B94', '#FFAAA5'],
-  },
-];
-
-export const getRandomProduct = (): Product => {
-  const randomIndex = Math.floor(Math.random() * MOCK_PRODUCTS.length);
-  return MOCK_PRODUCTS[randomIndex];
+export const BALL_COMMENTARIES: Record<string, string[]> = {
+  dot: [
+    'Defended back to the bowler!',
+    'Good length, played out.',
+    'Dot ball! Pressure builds.',
+    'Tight line, no room to score.',
+  ],
+  single: [
+    'Worked away for a single.',
+    'Quick single taken!',
+    'Pushed into the gap, one run.',
+    'Rotates the strike.',
+  ],
+  double: [
+    'Running between the wickets!',
+    'Two good ones taken!',
+    'Pushes into the outfield, 2 runs.',
+  ],
+  triple: ['Three! Great running between the wickets!'],
+  four: [
+    'FOUR! Cracking shot!',
+    'Races away to the boundary!',
+    'Through the covers for FOUR!',
+    'Clipped fine for FOUR!',
+  ],
+  six: [
+    'SIX!! MASSIVE HIT!',
+    'Into the stands! SIX!',
+    "That's gone MILES! SIX!",
+    'Maximum! Clean hit over long-on!',
+  ],
+  wicket: [
+    'WICKET! Big breakthrough!',
+    'OUT! The crowd goes wild!',
+    'CAUGHT! Drama in the middle!',
+    'BOWLED HIM! What a delivery!',
+  ],
+  wide: ['Wide down the leg side.', 'Gone down the leg, wide called.', 'Too wide outside off.'],
+  no_ball: ['No ball! Free hit coming!', 'Overstepped! No ball called!'],
 };
 
-export const calculateXPForLevel = (level: number): number => {
-  return level * 100;
-};
+export function getRandomScenario(): MatchScenario {
+  const base = MATCH_SCENARIOS[Math.floor(Math.random() * MATCH_SCENARIOS.length)];
+  return { ...base, id: `scenario_${Date.now()}` };
+}
 
-export const calculateLevel = (xp: number): number => {
-  return Math.floor(xp / 100) + 1;
-};
+export function getRandomOpponentName(): string {
+  return OPPONENT_NAMES[Math.floor(Math.random() * OPPONENT_NAMES.length)];
+}
+
+export function getRandomCommentary(outcome: BallOutcome): string {
+  const list = BALL_COMMENTARIES[outcome] ?? ['Ball played.'];
+  return list[Math.floor(Math.random() * list.length)];
+}

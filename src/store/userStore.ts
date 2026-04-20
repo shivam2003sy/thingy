@@ -1,88 +1,74 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserState, PersonalityType, Product, Badge } from '../types';
-import { BADGES } from '../utils/mockData';
+import { STORAGE_KEYS } from '../config/constants';
 
-interface UserStore extends UserState {
-  setPersonality: (personality: PersonalityType) => void;
-  addCoins: (amount: number) => void;
-  addXP: (amount: number) => void;
-  addProduct: (product: Product) => void;
-  unlockBadge: (badgeId: string) => void;
-  completeOnboarding: () => void;
-  setNotifications: (enabled: boolean) => void;
-  resetUser: () => void;
+interface UserState {
+  id: string;
+  username: string;
+  coins: number;
+  level: number;
+  xp: number;
+  totalWins: number;
+  totalLosses: number;
+  winStreak: number;
+  gamesPlayed: number;
 }
 
-const initialState: UserState = {
-  id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-  hasCompletedOnboarding: false,
-  coins: 0,
+interface UserStore extends UserState {
+  addCoins: (amount: number) => void;
+  addXP: (amount: number) => void;
+  recordWin: () => void;
+  recordLoss: () => void;
+  recordDraw: () => void;
+  setUsername: (name: string) => void;
+}
+
+const INITIAL: UserState = {
+  id: `user_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+  username: `Player_${Math.floor(Math.random() * 9999)}`,
+  coins: 100,
   level: 1,
   xp: 0,
-  badges: [],
-  inventory: [],
-  notificationsEnabled: false,
-  isGuest: true,
-  createdAt: new Date(),
+  totalWins: 0,
+  totalLosses: 0,
+  winStreak: 0,
+  gamesPlayed: 0,
 };
 
 export const useUserStore = create<UserStore>()(
   persist(
     (set, get) => ({
-      ...initialState,
-      
-      setPersonality: (personality) => {
-        set({ personality });
+      ...INITIAL,
+
+      addCoins: amount => set({ coins: get().coins + amount }),
+
+      addXP: amount => {
+        const newXP = get().xp + amount;
+        set({ xp: newXP, level: Math.floor(newXP / 500) + 1 });
       },
-      
-      addCoins: (amount) => {
-        set((state) => ({ coins: state.coins + amount }));
-      },
-      
-      addXP: (amount) => {
-        set((state) => {
-          const newXP = state.xp + amount;
-          const newLevel = Math.floor(newXP / 100) + 1;
-          return { xp: newXP, level: newLevel };
-        });
-      },
-      
-      addProduct: (product) => {
-        set((state) => ({
-          inventory: [...state.inventory, product],
-        }));
-      },
-      
-      unlockBadge: (badgeId) => {
-        const badge = BADGES.find((b) => b.id === badgeId);
-        if (badge && !get().badges.find((b) => b.id === badgeId)) {
-          set((state) => ({
-            badges: [...state.badges, { ...badge, unlockedAt: new Date() }],
-          }));
-        }
-      },
-      
-      completeOnboarding: () => {
-        set({ hasCompletedOnboarding: true });
-      },
-      
-      setNotifications: (enabled) => {
-        set({ notificationsEnabled: enabled });
-      },
-      
-      resetUser: () => {
+
+      recordWin: () =>
         set({
-          ...initialState,
-          id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          createdAt: new Date(),
-        });
-      },
+          totalWins: get().totalWins + 1,
+          winStreak: get().winStreak + 1,
+          gamesPlayed: get().gamesPlayed + 1,
+        }),
+
+      recordLoss: () =>
+        set({
+          totalLosses: get().totalLosses + 1,
+          winStreak: 0,
+          gamesPlayed: get().gamesPlayed + 1,
+        }),
+
+      recordDraw: () => set({ gamesPlayed: get().gamesPlayed + 1 }),
+
+      setUsername: username => set({ username }),
     }),
     {
-      name: '@thingy_user_state',
+      name: STORAGE_KEYS.USER_STATE,
       storage: createJSONStorage(() => AsyncStorage),
-    }
-  )
+    },
+  ),
 );

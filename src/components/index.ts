@@ -4,5 +4,3 @@ export { ProgressBar } from './ProgressBar';
 export { ProgressDots } from './ProgressDots';
 export { CoinAnimation } from './CoinAnimation';
 export { ConfettiAnimation } from './ConfettiAnimation';
-export { Badge } from './Badge';
-export { QuizOption } from './QuizOption';
