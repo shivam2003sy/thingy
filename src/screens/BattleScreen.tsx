@@ -8,7 +8,7 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import LinearGradient from 'react-native-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { socketService } from '../socket/socketService';
 import { useGameStore } from '../store/gameStore';
