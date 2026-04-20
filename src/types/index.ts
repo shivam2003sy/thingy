@@ -13,7 +13,7 @@ export interface Product {
   icon: string;
   description: string;
   price: number;
-  rarity: 'common' | 'rare' | 'legendary';
+  rarity: 'common' | 'rare' | 'legendary' | 'cursed';
   imageUrl?: string;
 }
 
@@ -58,4 +58,31 @@ export interface HookScreen {
   title: string;
   icon: string;
   gradient: string[];
+}
+
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  avatar: string;
+  bio: string;
+  level: number;
+  badges: string[];
+  itemsOwned: number;
+}
+
+export interface ViralContent {
+  id: string;
+  userId: string;
+  itemId: string;
+  caption: string;
+  reactions: Record<string, number>;
+  shares: number;
+  timestamp: Date;
+}
+
+export interface Reaction {
+  emoji: string;
+  count: number;
+  users: string[];
 }

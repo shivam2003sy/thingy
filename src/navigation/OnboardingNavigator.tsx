@@ -10,11 +10,17 @@ import {
   SignUpScreen,
   FirstItemScreen,
   RewardLoopScreen,
+  OnboardingScreen1,
+  OnboardingScreen2,
+  OnboardingScreen3,
 } from '../screens';
 import { useUserStore } from '../store/userStore';
 import { Product } from '../types';
 
 type OnboardingStep =
+  | 'onboarding1'
+  | 'onboarding2'
+  | 'onboarding3'
   | 'hooks'
   | 'identity'
   | 'reward'
@@ -25,7 +31,7 @@ type OnboardingStep =
   | 'rewardLoop';
 
 export const OnboardingNavigator: React.FC = () => {
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('hooks');
+  const [currentStep, setCurrentStep] = useState<OnboardingStep>('onboarding1');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const navigation = useNavigation();
   
@@ -38,7 +44,7 @@ export const OnboardingNavigator: React.FC = () => {
     unlockBadge('chaos-starter');
     navigation.reset({
       index: 0,
-      routes: [{ name: 'Dashboard' as never }],
+      routes: [{ name: 'Feed' as never }],
     });
   };
   
@@ -50,6 +56,15 @@ export const OnboardingNavigator: React.FC = () => {
   
   const renderStep = () => {
     switch (currentStep) {
+      case 'onboarding1':
+        return <OnboardingScreen1 onNext={() => setCurrentStep('onboarding2')} />;
+      
+      case 'onboarding2':
+        return <OnboardingScreen2 onNext={() => setCurrentStep('onboarding3')} />;
+      
+      case 'onboarding3':
+        return <OnboardingScreen3 onNext={handleComplete} />;
+      
       case 'hooks':
         return <HookScreens onComplete={() => setCurrentStep('identity')} />;
       

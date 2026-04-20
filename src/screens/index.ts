@@ -8,3 +8,7 @@ export { SignUpScreen } from './SignUpScreen';
 export { FirstItemScreen } from './FirstItemScreen';
 export { RewardLoopScreen } from './RewardLoopScreen';
 export { DashboardScreen } from './DashboardScreen';
+export { OnboardingScreen1 } from './OnboardingScreen1';
+export { OnboardingScreen2 } from './OnboardingScreen2';
+export { OnboardingScreen3 } from './OnboardingScreen3';
+export { FeedScreen } from './FeedScreen';
