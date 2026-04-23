@@ -17,8 +17,25 @@ export default function SplashScreen({ navigation }: Props) {
 
     const timer = setTimeout(() => {
       opacity.value = withTiming(0, { duration: 500 });
-      const { user } = require('../store/authStore').useAuthStore.getState();
-      setTimeout(() => navigation.replace(user ? 'Tabs' : 'Auth'), 500);
+      
+      // Wait for auth to initialize before navigating
+      let attempts = 0;
+      const maxAttempts = 30; // 3 seconds max wait
+      
+      const checkAuthAndNavigate = () => {
+        const { user, isInitialized } = require('../store/authStore').useAuthStore.getState();
+        console.log('[Splash] Check auth - isInitialized:', isInitialized, 'user:', !!user, 'attempts:', attempts);
+        
+        if (isInitialized || attempts >= maxAttempts) {
+          console.log('[Splash] Navigating to:', user ? 'Tabs' : 'Auth');
+          setTimeout(() => navigation.replace(user ? 'Tabs' : 'Auth'), 500);
+        } else {
+          // Check again in 100ms if not initialized
+          attempts++;
+          setTimeout(checkAuthAndNavigate, 100);
+        }
+      };
+      checkAuthAndNavigate();
     }, 2500);
 
     return () => clearTimeout(timer);
