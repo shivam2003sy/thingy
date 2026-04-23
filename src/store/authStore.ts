@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Linking } from 'react-native';
 import { supabase } from '../config/supabase';
 
 export interface AuthUser {
@@ -21,9 +22,10 @@ export interface AuthUser {
 interface AuthStore {
   user: AuthUser | null;
   isLoading: boolean;
-  isOnboarded: boolean;           // shown welcome + token gift screen?
-  signInWithGoogle: (idToken: string) => Promise<void>;
-  continueAsGuest: () => Promise<void>;
+  isOnboarded: boolean;
+  initialize: () => void;
+  signInWithGoogle: () => Promise<void>;
+  handleOAuthCallback: (url: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateTokens: (delta: number) => void;
   updateStats: (delta: Partial<Pick<AuthUser, 'totalWins' | 'winStreak' | 'gamesPlayed' | 'xp' | 'coins'>>) => void;
@@ -31,20 +33,59 @@ interface AuthStore {
   refreshProfile: () => Promise<void>;
 }
 
-const SIGNUP_BONUS = 1000; // free tokens for new users
+const SIGNUP_BONUS = 1000;
+// Deep link scheme — must match AndroidManifest.xml and Info.plist
+export const OAUTH_REDIRECT = 'thingy://auth/callback';
 
-function guestUser(): AuthUser {
+async function buildUserFromSupabase(supabaseUser: any): Promise<AuthUser> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', supabaseUser.id)
+    .single();
+
+  const isNew = !profile;
+
+  if (isNew) {
+    const username =
+      supabaseUser.user_metadata?.full_name?.replace(/\s+/g, '_') ??
+      `Player_${Math.floor(Math.random() * 9999)}`;
+    await supabase.from('profiles').insert({
+      id: supabaseUser.id,
+      username,
+      tokens: SIGNUP_BONUS,
+    });
+    try { await supabase.rpc('grant_signup_bonus', { p_user_id: supabaseUser.id }); } catch { /* ok */ }
+
+    return {
+      id: supabaseUser.id,
+      email: supabaseUser.email,
+      username,
+      avatarUrl: supabaseUser.user_metadata?.avatar_url,
+      isGuest: false,
+      tokens: SIGNUP_BONUS,
+      coins: 100,
+      level: 1,
+      xp: 0,
+      totalWins: 0,
+      winStreak: 0,
+      gamesPlayed: 0,
+    };
+  }
+
   return {
-    id: `guest_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    username: `Player_${Math.floor(Math.random() * 9999)}`,
-    isGuest: true,
-    tokens: SIGNUP_BONUS,
-    coins: 100,
-    level: 1,
-    xp: 0,
-    totalWins: 0,
-    winStreak: 0,
-    gamesPlayed: 0,
+    id: supabaseUser.id,
+    email: supabaseUser.email,
+    username: profile.username,
+    avatarUrl: supabaseUser.user_metadata?.avatar_url,
+    isGuest: false,
+    tokens: profile.tokens ?? SIGNUP_BONUS,
+    coins: profile.coins ?? 100,
+    level: profile.level ?? 1,
+    xp: profile.xp ?? 0,
+    totalWins: profile.total_wins ?? 0,
+    winStreak: profile.win_streak ?? 0,
+    gamesPlayed: profile.games_played ?? 0,
   };
 }
 
@@ -55,67 +96,81 @@ export const useAuthStore = create<AuthStore>()(
       isLoading: false,
       isOnboarded: false,
 
-      signInWithGoogle: async (idToken: string) => {
+      // ── Initialize: subscribe to Supabase auth events ───────────────────────
+      // This is the single source of truth — fires on deep link, session restore,
+      // or any other auth state change. Call once on app startup.
+      initialize: () => {
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            // Guard: don't rebuild if we already have this user
+            if (get().user?.id === session.user.id) {
+              set({ isLoading: false });
+              return;
+            }
+            try {
+              const authUser = await buildUserFromSupabase(session.user);
+              set({ user: authUser, isLoading: false });
+            } catch {
+              set({ isLoading: false });
+            }
+          } else if (event === 'SIGNED_OUT') {
+            set({ user: null, isLoading: false });
+          } else if (event === 'TOKEN_REFRESHED' && session?.user && get().user) {
+            // Keep tokens fresh silently
+          } else {
+            set({ isLoading: false });
+          }
+        });
+      },
+
+      // ── Step 1: open Google OAuth in browser ────────────────────────────────
+      signInWithGoogle: async () => {
         set({ isLoading: true });
         try {
-          const { data, error } = await supabase.auth.signInWithIdToken({
+          const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
-            token: idToken,
+            options: {
+              redirectTo: OAUTH_REDIRECT,
+              skipBrowserRedirect: true, // we open manually via Linking
+            },
           });
           if (error) throw error;
+          if (!data?.url) throw new Error('No OAuth URL returned from Supabase');
 
-          const su = data.user;
-          if (!su) throw new Error('No user returned');
-
-          // Fetch or create profile in DB
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', su.id)
-            .single();
-
-          const isNew = !profile;
-          if (isNew) {
-            const username = su.user_metadata?.full_name?.replace(/\s+/g, '_') ??
-              `Player_${Math.floor(Math.random() * 9999)}`;
-            await supabase.from('profiles').insert({
-              id: su.id,
-              username,
-              tokens: SIGNUP_BONUS,
-            });
-            try { await supabase.rpc('grant_signup_bonus', { p_user_id: su.id }); } catch { /* ignore */ }
-          }
-
-          const p = profile ?? { username: su.user_metadata?.full_name ?? 'Player', tokens: SIGNUP_BONUS };
-          set({
-            user: {
-              id: su.id,
-              email: su.email,
-              username: p.username,
-              avatarUrl: su.user_metadata?.avatar_url,
-              isGuest: false,
-              tokens: p.tokens ?? SIGNUP_BONUS,
-              coins: p.coins ?? 100,
-              level: p.level ?? 1,
-              xp: p.xp ?? 0,
-              totalWins: p.total_wins ?? 0,
-              winStreak: p.win_streak ?? 0,
-              gamesPlayed: p.games_played ?? 0,
-            },
-            isOnboarded: !isNew,
-          });
-        } finally {
+          // Opens Google sign-in page in the device browser
+          await Linking.openURL(data.url);
+          // Loading stays true until handleOAuthCallback is called
+        } catch (err) {
           set({ isLoading: false });
+          throw err;
         }
       },
 
-      continueAsGuest: async () => {
-        set({ isLoading: true });
+      // ── Step 2: called when browser redirects back to thingy://auth/callback ─
+      handleOAuthCallback: async (url: string) => {
         try {
-          const guest = guestUser();
-          set({ user: guest, isOnboarded: false });
-        } finally {
+          // URL looks like: thingy://auth/callback#access_token=...&refresh_token=...
+          const fragment = url.split('#')[1] ?? url.split('?')[1] ?? '';
+          const params = new URLSearchParams(fragment);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token') ?? '';
+
+          if (!access_token) {
+            console.warn('[Auth] No access_token in callback URL');
+            set({ isLoading: false });
+            return;
+          }
+
+          const { data, error } = await supabase.auth.setSession({ access_token, refresh_token });
+          if (error) throw error;
+          if (!data.user) throw new Error('No user in session');
+
+          const authUser = await buildUserFromSupabase(data.user);
+          set({ user: authUser, isOnboarded: false, isLoading: false });
+        } catch (err) {
+          console.error('[Auth] OAuth callback error:', err);
           set({ isLoading: false });
+          throw err;
         }
       },
 
@@ -161,6 +216,7 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: '@thingy_auth',
       storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({ user: state.user, isOnboarded: state.isOnboarded }),
     },
   ),
 );

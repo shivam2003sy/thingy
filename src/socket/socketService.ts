@@ -21,7 +21,21 @@ type SocketEvent =
   | 'ballResult'
   | 'gameEnd'
   | 'opponentDisconnected'
-  | 'error';
+  | 'error'
+  | 'liveMatches'
+  | 'contests'
+  | 'matchesUpdated'
+  | 'contestsUpdated'
+  | 'joinContest'
+  // Ball Rush events
+  | 'ballRushMatchList'
+  | 'ballRushWindow'
+  | 'ballRushCrowdUpdate'
+  | 'ballRushResult'
+  | 'ballRushUserResult'
+  | 'ballRushPredictionAccepted'
+  | 'ballRushLeaderboard'
+  | 'ballRushWindowClosed';
 
 type Callback = (...args: any[]) => void;
 
@@ -32,6 +46,11 @@ interface ISocketService {
   off(event: SocketEvent, cb?: Callback): this;
   findMatch(userId: string, username: string): void;
   submitPrediction(optionId: string): void;
+  getBallRushMatches(): void;
+  subscribeBallRush(matchId: string): void;
+  unsubscribeBallRush(matchId: string): void;
+  submitBallRushPrediction(matchId: string, userId: string, username: string, optionId: string, tokensBet: number): void;
+  emit(event: string, data?: any): void;
   cleanup(): void;
 }
 
@@ -66,6 +85,26 @@ class RealSocketService implements ISocketService {
 
   submitPrediction(optionId: string) {
     this.socket?.emit('submitPrediction', { optionId });
+  }
+
+  getBallRushMatches() {
+    this.socket?.emit('getBallRushMatches');
+  }
+
+  subscribeBallRush(matchId: string) {
+    this.socket?.emit('subscribeBallRush', { matchId });
+  }
+
+  unsubscribeBallRush(matchId: string) {
+    this.socket?.emit('unsubscribeBallRush', { matchId });
+  }
+
+  submitBallRushPrediction(matchId: string, userId: string, username: string, optionId: string, tokensBet: number) {
+    this.socket?.emit('submitBallRushPrediction', { matchId, userId, username, optionId, tokensBet });
+  }
+
+  emit(event: string, data?: any) {
+    this.socket?.emit(event, data);
   }
 
   cleanup() {
@@ -196,6 +235,70 @@ class MockSocketService implements ISocketService {
     for (const o of outcomes) { rand -= w[o]; if (rand <= 0) return o; }
     return 'dot';
   }
+
+  getBallRushMatches() {
+    // Mock: fire a fake ball rush match
+    this.schedule(() => this.fire('ballRushMatchList', [{
+      matchId: 'mock_ipl_001',
+      matchName: 'CSK vs MI · IPL 2026',
+      team1: { name: 'Chennai Super Kings', shortName: 'CSK', score: '142/3', overs: '14.0' },
+      team2: { name: 'Mumbai Indians',      shortName: 'MI',  score: '−',     overs: '0.0'  },
+      windowOpen: true,
+      windowClosesAt: Date.now() + 12_000,
+    }]), 200);
+  }
+
+  subscribeBallRush(matchId: string) {
+    // Mock: open a prediction window immediately
+    this.schedule(() => this.fire('ballRushWindow', {
+      matchId,
+      matchName: 'CSK vs MI · IPL 2026',
+      over: 14, ball: 3, totalOver: '14.3',
+      closesAt: Date.now() + 12_000,
+      team1: { name: 'Chennai Super Kings', shortName: 'CSK', score: '142/3', overs: '14.3' },
+      team2: { name: 'Mumbai Indians',      shortName: 'MI',  score: '−',     overs: '0.0'  },
+      striker: 'V. Kohli', bowler: 'J. Bumrah',
+      crowdSnapshot: { matchId, counts: { six: 12, four: 8, dot: 3 }, total: 23, percentages: { six: 52, four: 35, dot: 13 } },
+    }), 300);
+
+    // Mock crowd updates
+    let tick = 0;
+    const crowdTimer = setInterval(() => {
+      tick++;
+      this.fire('ballRushCrowdUpdate', {
+        matchId,
+        counts: { six: 12 + tick * 2, four: 8 + tick, dot: 3 + tick },
+        total: 23 + tick * 4,
+        percentages: { six: 52, four: 35, dot: 13 },
+      });
+    }, 2000);
+    this.timers.push(crowdTimer as any);
+  }
+
+  unsubscribeBallRush(_matchId: string) {}
+
+  submitBallRushPrediction(matchId: string, _userId: string, _username: string, optionId: string, tokensBet: number) {
+    this.schedule(() => this.fire('ballRushPredictionAccepted', { matchId, optionId }), 100);
+
+    // Simulate ball result after window expires
+    const OUTCOMES = ['dot', 'single', 'four', 'six', 'wicket', 'wide'];
+    const outcome = OUTCOMES[Math.floor(Math.random() * OUTCOMES.length)];
+    const correct = outcome === optionId;
+    const nearMiss = !correct && ((optionId === 'four' && outcome === 'six') || (optionId === 'six' && outcome === 'four'));
+    const tokensWon = correct ? tokensBet * 3 : nearMiss ? Math.floor(tokensBet * 1.5) : 0;
+
+    this.schedule(() => {
+      this.fire('ballRushResult', {
+        matchId, outcome, runs: outcome === 'six' ? 6 : outcome === 'four' ? 4 : 1,
+        isWicket: outcome === 'wicket', isExtra: outcome === 'wide',
+        commentary: 'Bumrah to Kohli — what a delivery!',
+        over: '14.3', team1: {}, team2: {},
+      });
+      this.fire('ballRushUserResult', { matchId, outcome, correct, nearMiss, tokensWon });
+    }, 13_000);
+  }
+
+  emit(_event: string, _data?: any) {}
 
   cleanup() {
     this.timers.forEach(clearTimeout);

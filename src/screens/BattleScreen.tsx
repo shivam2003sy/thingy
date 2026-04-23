@@ -1,13 +1,5 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  SafeAreaView,
-  TouchableOpacity,
-  Animated,
-  ScrollView,
-  Pressable,
-} from 'react-native';
+import { View, Text, SafeAreaView, TouchableOpacity, Animated, ScrollView, Pressable, StatusBar } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { socketService } from '../socket/socketService';
@@ -17,31 +9,16 @@ import { resultEmoji, resultLabel, coinsForResult, xpForResult, determineWinner 
 import { PREDICTION_OPTIONS } from '../utils/mockData';
 import { APP_CONFIG } from '../config/constants';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { T } from '../config/theme';
 
-type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Battle'>;
-};
+type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Battle'> };
 
 export default function BattleScreen({ navigation }: Props) {
   const {
-    scenario,
-    currentBall,
-    totalBalls,
-    myPrediction,
-    opponentPredictionId,
-    timeLeft,
-    myTotalScore,
-    opponentTotalScore,
-    currentBallResult,
-    status,
-    opponentName,
-    runsScored,
-    setMyPrediction,
-    setOpponentPredictionId,
-    setBallResult,
-    nextBall,
-    decrementTimer,
-    finishGame,
+    scenario, currentBall, totalBalls, myPrediction, opponentPredictionId,
+    timeLeft, myTotalScore, opponentTotalScore, currentBallResult, status,
+    opponentName, runsScored, setMyPrediction, setOpponentPredictionId,
+    setBallResult, nextBall, decrementTimer, finishGame,
   } = useGameStore();
 
   const { updateTokens, updateStats } = useAuthStore();
@@ -63,48 +40,29 @@ export default function BattleScreen({ navigation }: Props) {
     stopTimer();
     timerProgress.setValue(1);
     timerAnimation.current = Animated.timing(timerProgress, {
-      toValue: 0,
-      duration: APP_CONFIG.PREDICTION_TIME * 1000,
-      useNativeDriver: false,
+      toValue: 0, duration: APP_CONFIG.PREDICTION_TIME * 1000, useNativeDriver: false,
     });
     timerAnimation.current.start();
-    timerInterval.current = setInterval(() => {
-      useGameStore.getState().decrementTimer();
-    }, 1000);
+    timerInterval.current = setInterval(() => { useGameStore.getState().decrementTimer(); }, 1000);
   }, [stopTimer]);
 
-  const lockPrediction = useCallback(
-    (optionId: string) => {
-      if (useGameStore.getState().status !== 'predicting') return;
-      if (useGameStore.getState().myPrediction) return;
+  const lockPrediction = useCallback((optionId: string) => {
+    if (useGameStore.getState().status !== 'predicting') return;
+    if (useGameStore.getState().myPrediction) return;
+    stopTimer();
+    const option = PREDICTION_OPTIONS.find(o => o.id === optionId);
+    if (!option) return;
+    setSelectedOptionId(optionId);
+    setMyPrediction({ optionId, label: option.label, icon: String(option.icon), lockedAt: Date.now() });
+    socketService.submitPrediction(optionId);
+  }, [stopTimer, setMyPrediction]);
 
-      stopTimer();
-
-      const option = PREDICTION_OPTIONS.find(o => o.id === optionId);
-      if (!option) return;
-
-      setSelectedOptionId(optionId);
-      setMyPrediction({
-        optionId,
-        label: option.label,
-        icon: String(option.icon),
-        lockedAt: Date.now(),
-      });
-
-      socketService.submitPrediction(optionId);
-    },
-    [stopTimer, setMyPrediction],
-  );
-
-  // Auto-lock when timer hits 0
   useEffect(() => {
     if (timeLeft === 0 && status === 'predicting' && !myPrediction) {
-      const random = PREDICTION_OPTIONS[Math.floor(Math.random() * PREDICTION_OPTIONS.length)];
-      lockPrediction(random.id);
+      lockPrediction(PREDICTION_OPTIONS[Math.floor(Math.random() * PREDICTION_OPTIONS.length)].id);
     }
   }, [timeLeft]);
 
-  // Socket listeners — ballResult now carries opponent prediction + server-computed points
   useEffect(() => {
     socketService.on('ballResult', (result: {
       ball: number; outcome: string; runs: number; isWicket: boolean; commentary: string;
@@ -113,40 +71,26 @@ export default function BattleScreen({ navigation }: Props) {
       setOpponentPredictionId(result.opponentPredictionId);
       setBallResult(
         { ball: result.ball, outcome: result.outcome as any, runs: result.runs, isWicket: result.isWicket, commentary: result.commentary },
-        result.myPoints,
-        result.opponentPoints,
+        result.myPoints, result.opponentPoints,
       );
       setPointsFlash({ me: result.myPoints, opp: result.opponentPoints });
-
       resultScale.setValue(0);
       Animated.spring(resultScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }).start();
     });
-
-    socketService.on('opponentDisconnected', () => {
-      navigation.replace('Tabs');
-    });
-
-    return () => {
-      socketService.off('ballResult');
-      socketService.off('opponentDisconnected');
-    };
+    socketService.on('opponentDisconnected', () => { navigation.replace('Tabs'); });
+    return () => { socketService.off('ballResult'); socketService.off('opponentDisconnected'); };
   }, []);
 
-  // Reset per ball
   useEffect(() => {
     if (status === 'predicting') {
-      setSelectedOptionId(null);
-      setPointsFlash(null);
-      resultScale.setValue(0);
-      startTimer();
+      setSelectedOptionId(null); setPointsFlash(null);
+      resultScale.setValue(0); startTimer();
     }
     return stopTimer;
   }, [status, currentBall]);
 
   const handleContinue = useCallback(() => {
-    const { currentBall: ball, totalBalls: total, myTotalScore: myS, opponentTotalScore: oppS } =
-      useGameStore.getState();
-
+    const { currentBall: ball, totalBalls: total, myTotalScore: myS, opponentTotalScore: oppS } = useGameStore.getState();
     if (ball >= total) {
       stopTimer();
       const winner = determineWinner(myS, oppS);
@@ -170,149 +114,78 @@ export default function BattleScreen({ navigation }: Props) {
 
   if (!scenario) return null;
 
-  const timerWidth = timerProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
-
+  const timerWidth = timerProgress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   const isRevealing = status === 'revealing' && currentBallResult !== null;
   const isWaiting = status === 'waiting_opponent';
   const isPredicting = status === 'predicting';
-
   const runsLeft = scenario.runsNeeded - runsScored;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
+
       {/* Score Bar */}
-      <View
-        style={{
-          flexDirection: 'row',
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          backgroundColor: '#18181B',
-          borderBottomWidth: 1,
-          borderBottomColor: '#27272A',
-        }}
-      >
+      <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: T.card, borderBottomWidth: 1, borderBottomColor: T.border }}>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ color: '#71717A', fontSize: 11, marginBottom: 2 }}>You</Text>
-          <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 20 }}>{myTotalScore}</Text>
+          <Text style={{ color: T.textMuted, fontSize: 10, marginBottom: 2, fontWeight: '600' }}>YOU</Text>
+          <Text style={{ color: T.text, fontWeight: '800', fontSize: 22 }}>{myTotalScore}</Text>
         </View>
         <View style={{ alignItems: 'center', paddingHorizontal: 16 }}>
-          <Text style={{ color: '#52525B', fontSize: 10 }}>SCORE</Text>
-          <Text style={{ color: '#71717A', fontSize: 11, marginTop: 1 }}>
-            Ball {currentBall}/{totalBalls}
-          </Text>
+          <Text style={{ color: T.textSec, fontSize: 10, fontWeight: '600' }}>BALL {currentBall}/{totalBalls}</Text>
+          <View style={{ width: 2, height: 16, backgroundColor: T.border, marginTop: 4 }} />
         </View>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ color: '#71717A', fontSize: 11, marginBottom: 2 }}>
-            {opponentName.length > 10 ? opponentName.slice(0, 10) + '…' : opponentName}
+          <Text style={{ color: T.textMuted, fontSize: 10, marginBottom: 2, fontWeight: '600' }} numberOfLines={1}>
+            {opponentName.toUpperCase().slice(0, 10)}
           </Text>
-          <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 20 }}>
-            {opponentTotalScore}
-          </Text>
+          <Text style={{ color: T.textSec, fontWeight: '800', fontSize: 22 }}>{opponentTotalScore}</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         {/* Scenario Context */}
-        <View
-          style={{
-            margin: 16,
-            backgroundColor: '#18181B',
-            borderRadius: 18,
-            padding: 16,
-          }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <View style={{ margin: 16, backgroundColor: T.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: T.border, ...T.shadowSm }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  backgroundColor: scenario.battingTeamColor,
-                  marginRight: 6,
-                }}
-              />
-              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>
-                {scenario.battingTeam}
-              </Text>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: scenario.battingTeamColor, marginRight: 6 }} />
+              <Text style={{ color: T.text, fontWeight: '700', fontSize: 15 }}>{scenario.battingTeam}</Text>
             </View>
-            <Text style={{ color: '#52525B', fontSize: 11 }}>Over {scenario.overNumber}</Text>
+            <Text style={{ color: T.textMuted, fontSize: 11 }}>Over {scenario.overNumber}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>
-                {scenario.bowlingTeam}
-              </Text>
-              <View
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  backgroundColor: scenario.bowlingTeamColor,
-                  marginLeft: 6,
-                }}
-              />
+              <Text style={{ color: T.text, fontWeight: '700', fontSize: 15 }}>{scenario.bowlingTeam}</Text>
+              <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: scenario.bowlingTeamColor, marginLeft: 6 }} />
             </View>
           </View>
 
-          <Text
-            style={{
-              color: '#A855F7',
-              fontWeight: '700',
-              fontSize: 15,
-              textAlign: 'center',
-              marginBottom: 8,
-            }}
-          >
-            {scenario.runsNeeded > 0
-              ? `Needs ${runsLeft > 0 ? runsLeft : 0} off ${scenario.ballsRemaining - currentBall + 1} balls`
-              : scenario.context}
-          </Text>
+          <View style={{ backgroundColor: T.primaryLight, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, marginBottom: 10 }}>
+            <Text style={{ color: T.primaryDark, fontWeight: '700', fontSize: 14, textAlign: 'center' }}>
+              {scenario.runsNeeded > 0
+                ? `Needs ${runsLeft > 0 ? runsLeft : 0} off ${scenario.ballsRemaining - currentBall + 1} balls`
+                : scenario.context}
+            </Text>
+          </View>
 
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20 }}>
-            <Text style={{ color: '#71717A', fontSize: 12 }}>🏏 {scenario.strikerName}</Text>
-            <Text style={{ color: '#71717A', fontSize: 12 }}>🎳 {scenario.bowlerName}</Text>
+            <Text style={{ color: T.textSec, fontSize: 12 }}>🏏 {scenario.strikerName}</Text>
+            <Text style={{ color: T.textSec, fontSize: 12 }}>🎳 {scenario.bowlerName}</Text>
           </View>
         </View>
 
         {/* Ball Tracker */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'center',
-            gap: 8,
-            marginBottom: 16,
-            paddingHorizontal: 16,
-          }}
-        >
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 16, paddingHorizontal: 16 }}>
           {Array.from({ length: totalBalls }).map((_, i) => {
             const n = i + 1;
             const isCurrent = n === currentBall;
             const isPast = n < currentBall;
             return (
-              <View
-                key={i}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: isCurrent ? '#A855F7' : isPast ? '#3B1D6E' : '#27272A',
-                  borderWidth: isCurrent ? 0 : 1,
-                  borderColor: isCurrent ? 'transparent' : isPast ? '#5B21B6' : '#3F3F46',
-                }}
-              >
-                <Text
-                  style={{
-                    color: isCurrent ? '#FFFFFF' : isPast ? '#C4B5FD' : '#52525B',
-                    fontWeight: '700',
-                    fontSize: 13,
-                  }}
-                >
-                  {n}
-                </Text>
+              <View key={i} style={{
+                width: 36, height: 36, borderRadius: 18,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: isCurrent ? T.primary : isPast ? T.primaryLight : T.card,
+                borderWidth: 1,
+                borderColor: isCurrent ? T.primary : isPast ? T.primary + '40' : T.border,
+              }}>
+                <Text style={{ color: isCurrent ? '#FFFFFF' : isPast ? T.primary : T.textMuted, fontWeight: '700', fontSize: 13 }}>{n}</Text>
               </View>
             );
           })}
@@ -321,40 +194,14 @@ export default function BattleScreen({ navigation }: Props) {
         {/* Timer Bar */}
         {isPredicting && (
           <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                marginBottom: 6,
-              }}
-            >
-              <Text style={{ color: '#52525B', fontSize: 12 }}>Time to predict</Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  fontWeight: '700',
-                  color: timeLeft <= 3 ? '#EF4444' : timeLeft <= 6 ? '#F59E0B' : '#A855F7',
-                }}
-              >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text style={{ color: T.textSec, fontSize: 12, fontWeight: '600' }}>Predict this ball</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: timeLeft <= 3 ? T.live : timeLeft <= 6 ? T.gold : T.primary }}>
                 {timeLeft}s
               </Text>
             </View>
-            <View
-              style={{
-                height: 6,
-                backgroundColor: '#27272A',
-                borderRadius: 99,
-                overflow: 'hidden',
-              }}
-            >
-              <Animated.View
-                style={{
-                  height: '100%',
-                  width: timerWidth,
-                  backgroundColor: timeLeft <= 3 ? '#EF4444' : timeLeft <= 6 ? '#F59E0B' : '#A855F7',
-                  borderRadius: 99,
-                }}
-              />
+            <View style={{ height: 6, backgroundColor: T.borderLight, borderRadius: 99, overflow: 'hidden' }}>
+              <Animated.View style={{ height: '100%', width: timerWidth, backgroundColor: timeLeft <= 3 ? T.live : timeLeft <= 6 ? T.gold : T.primary, borderRadius: 99 }} />
             </View>
           </View>
         )}
@@ -362,47 +209,25 @@ export default function BattleScreen({ navigation }: Props) {
         {/* Prediction Options */}
         {(isPredicting || isWaiting) && (
           <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-            <Text
-              style={{
-                color: '#52525B',
-                fontSize: 11,
-                fontWeight: '600',
-                letterSpacing: 1.2,
-                marginBottom: 12,
-              }}
-            >
-              {isPredicting ? 'PREDICT THIS BALL' : 'YOUR PREDICTION LOCKED'}
+            <Text style={{ color: T.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 12 }}>
+              {isPredicting ? 'TAP TO PREDICT' : 'PREDICTION LOCKED ✓'}
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {PREDICTION_OPTIONS.map(option => {
                 const isSelected = selectedOptionId === option.id;
                 const isLocked = !!myPrediction;
                 return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => !isLocked && lockPrediction(option.id)}
+                  <Pressable key={option.id} onPress={() => !isLocked && lockPrediction(option.id)}
                     style={{
-                      width: '30%',
-                      backgroundColor: isSelected ? 'rgba(168,85,247,0.2)' : '#18181B',
-                      borderRadius: 14,
-                      padding: 14,
-                      alignItems: 'center',
-                      borderWidth: 1.5,
-                      borderColor: isSelected ? '#A855F7' : '#27272A',
-                      opacity: isLocked && !isSelected ? 0.4 : 1,
+                      width: '30%', backgroundColor: isSelected ? T.primaryLight : T.card,
+                      borderRadius: 14, padding: 14, alignItems: 'center',
+                      borderWidth: 1.5, borderColor: isSelected ? T.primary : T.border,
+                      opacity: isLocked && !isSelected ? 0.45 : 1,
+                      ...T.shadowSm,
                     }}
                   >
-                    <Text style={{ fontSize: 26, marginBottom: 6 }}>
-                      {String(option.icon)}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontWeight: '600',
-                        textAlign: 'center',
-                        color: isSelected ? '#C4B5FD' : '#A1A1AA',
-                      }}
-                    >
+                    <Text style={{ fontSize: 26, marginBottom: 6 }}>{String(option.icon)}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '600', textAlign: 'center', color: isSelected ? T.primary : T.textSec }}>
                       {option.label}
                     </Text>
                   </Pressable>
@@ -410,137 +235,50 @@ export default function BattleScreen({ navigation }: Props) {
               })}
             </View>
             {!myPrediction && (
-              <Text
-                style={{
-                  color: '#3F3F46',
-                  fontSize: 11,
-                  textAlign: 'center',
-                  marginTop: 10,
-                }}
-              >
-                Tap to select · Auto-locks in {timeLeft}s
+              <Text style={{ color: T.textMuted, fontSize: 11, textAlign: 'center', marginTop: 10 }}>
+                Auto-locks in {timeLeft}s
               </Text>
             )}
           </View>
         )}
 
-        {/* Waiting Overlay */}
+        {/* Waiting */}
         {isWaiting && (
-          <View
-            style={{
-              marginHorizontal: 16,
-              backgroundColor: '#18181B',
-              borderRadius: 16,
-              padding: 20,
-              alignItems: 'center',
-              marginBottom: 16,
-            }}
-          >
+          <View style={{ marginHorizontal: 16, backgroundColor: T.primaryLight, borderRadius: 14, padding: 20, alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: T.primary + '30' }}>
             <Text style={{ fontSize: 28, marginBottom: 8 }}>🎯</Text>
-            <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>
-              Prediction locked!
-            </Text>
-            <Text style={{ color: '#71717A', fontSize: 13, marginTop: 4 }}>
-              Waiting for {opponentName}…
-            </Text>
+            <Text style={{ color: T.primaryDark, fontWeight: '700', fontSize: 15 }}>Prediction locked!</Text>
+            <Text style={{ color: T.primary, fontSize: 13, marginTop: 4 }}>Waiting for {opponentName}…</Text>
           </View>
         )}
 
         {/* Ball Result Reveal */}
         {isRevealing && currentBallResult && (
           <>
-            <Animated.View
-              style={{
-                marginHorizontal: 16,
-                borderRadius: 20,
-                overflow: 'hidden',
-                transform: [{ scale: resultScale }],
-                marginBottom: 12,
-              }}
-            >
+            <Animated.View style={{ marginHorizontal: 16, borderRadius: 20, overflow: 'hidden', transform: [{ scale: resultScale }], marginBottom: 12 }}>
               <LinearGradient
-                colors={
-                  currentBallResult.isWicket
-                    ? ['#7f1d1d', '#3b0a0a']
-                    : currentBallResult.runs >= 6
-                    ? ['#4c1d95', '#2e1065']
-                    : currentBallResult.runs >= 4
-                    ? ['#1e3a8a', '#0f172a']
-                    : ['#18181B', '#0c0a09']
-                }
-                style={{ padding: 24, alignItems: 'center' }}
+                colors={currentBallResult.isWicket ? ['#FEE2E2', '#FECACA'] : currentBallResult.runs >= 6 ? ['#EDE9FE', '#DDD6FE'] : currentBallResult.runs >= 4 ? ['#DBEAFE', '#BFDBFE'] : [T.card, T.bg]}
+                style={{ padding: 24, alignItems: 'center', borderRadius: 20, borderWidth: 1, borderColor: T.border }}
               >
-                <Text style={{ fontSize: 56, marginBottom: 8 }}>
-                  {resultEmoji(currentBallResult.outcome)}
-                </Text>
-                <Text
-                  style={{ color: '#FFFFFF', fontSize: 28, fontWeight: '800', marginBottom: 4 }}
-                >
-                  {resultLabel(currentBallResult)}
-                </Text>
-                <Text
-                  style={{
-                    color: 'rgba(255,255,255,0.6)',
-                    fontSize: 13,
-                    textAlign: 'center',
-                    marginBottom: 16,
-                  }}
-                >
-                  {currentBallResult.commentary}
-                </Text>
+                <Text style={{ fontSize: 56, marginBottom: 8 }}>{resultEmoji(currentBallResult.outcome)}</Text>
+                <Text style={{ color: T.text, fontSize: 26, fontWeight: '800', marginBottom: 4 }}>{resultLabel(currentBallResult)}</Text>
+                <Text style={{ color: T.textSec, fontSize: 13, textAlign: 'center', marginBottom: 16 }}>{currentBallResult.commentary}</Text>
 
                 {pointsFlash && (
                   <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                    <View
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderRadius: 99,
-                        backgroundColor:
-                          pointsFlash.me > 0 ? 'rgba(34,197,94,0.25)' : 'rgba(63,63,70,0.4)',
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: '700',
-                          fontSize: 13,
-                          color: pointsFlash.me > 0 ? '#4ADE80' : '#52525B',
-                        }}
-                      >
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: pointsFlash.me > 0 ? '#DCFCE7' : T.borderLight }}>
+                      <Text style={{ fontWeight: '700', fontSize: 13, color: pointsFlash.me > 0 ? '#16A34A' : T.textMuted }}>
                         You +{pointsFlash.me}pts
                       </Text>
                     </View>
-                    <View
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 8,
-                        borderRadius: 99,
-                        backgroundColor:
-                          pointsFlash.opp > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(63,63,70,0.4)',
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontWeight: '700',
-                          fontSize: 13,
-                          color: pointsFlash.opp > 0 ? '#F87171' : '#52525B',
-                        }}
-                      >
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 99, backgroundColor: pointsFlash.opp > 0 ? '#FEE2E2' : T.borderLight }}>
+                      <Text style={{ fontWeight: '700', fontSize: 13, color: pointsFlash.opp > 0 ? T.live : T.textMuted }}>
                         Opp +{pointsFlash.opp}pts
                       </Text>
                     </View>
                   </View>
                 )}
 
-                <TouchableOpacity
-                  onPress={handleContinue}
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    paddingHorizontal: 32,
-                    paddingVertical: 12,
-                    borderRadius: 99,
-                  }}
-                >
+                <TouchableOpacity onPress={handleContinue} style={{ backgroundColor: T.primary, paddingHorizontal: 32, paddingVertical: 12, borderRadius: 99 }}>
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>
                     {currentBall >= totalBalls ? '🏆 See Results' : '▶ Next Ball'}
                   </Text>
@@ -550,38 +288,17 @@ export default function BattleScreen({ navigation }: Props) {
 
             {/* Prediction Comparison */}
             {opponentPredictionId && myPrediction && (
-              <View
-                style={{
-                  marginHorizontal: 16,
-                  backgroundColor: '#18181B',
-                  borderRadius: 14,
-                  padding: 16,
-                  flexDirection: 'row',
-                  justifyContent: 'space-around',
-                }}
-              >
+              <View style={{ marginHorizontal: 16, backgroundColor: T.card, borderRadius: 14, padding: 16, flexDirection: 'row', justifyContent: 'space-around', borderWidth: 1, borderColor: T.border }}>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: '#71717A', fontSize: 11, marginBottom: 4 }}>
-                    Your pick
-                  </Text>
-                  <Text style={{ fontSize: 22 }}>
-                    {String(PREDICTION_OPTIONS.find(o => o.id === myPrediction.optionId)?.icon ?? '')}
-                  </Text>
-                  <Text style={{ color: '#A1A1AA', fontSize: 11, marginTop: 2 }}>
-                    {PREDICTION_OPTIONS.find(o => o.id === myPrediction.optionId)?.label}
-                  </Text>
+                  <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Your pick</Text>
+                  <Text style={{ fontSize: 22 }}>{String(PREDICTION_OPTIONS.find(o => o.id === myPrediction.optionId)?.icon ?? '')}</Text>
+                  <Text style={{ color: T.textSec, fontSize: 11, marginTop: 2 }}>{PREDICTION_OPTIONS.find(o => o.id === myPrediction.optionId)?.label}</Text>
                 </View>
-                <View style={{ width: 1, backgroundColor: '#27272A' }} />
+                <View style={{ width: 1, backgroundColor: T.border }} />
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: '#71717A', fontSize: 11, marginBottom: 4 }}>
-                    Opp's pick
-                  </Text>
-                  <Text style={{ fontSize: 22 }}>
-                    {String(PREDICTION_OPTIONS.find(o => o.id === opponentPredictionId)?.icon ?? '')}
-                  </Text>
-                  <Text style={{ color: '#A1A1AA', fontSize: 11, marginTop: 2 }}>
-                    {PREDICTION_OPTIONS.find(o => o.id === opponentPredictionId)?.label}
-                  </Text>
+                  <Text style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>Opp's pick</Text>
+                  <Text style={{ fontSize: 22 }}>{String(PREDICTION_OPTIONS.find(o => o.id === opponentPredictionId)?.icon ?? '')}</Text>
+                  <Text style={{ color: T.textSec, fontSize: 11, marginTop: 2 }}>{PREDICTION_OPTIONS.find(o => o.id === opponentPredictionId)?.label}</Text>
                 </View>
               </View>
             )}

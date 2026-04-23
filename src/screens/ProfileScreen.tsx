@@ -1,21 +1,14 @@
 import React, { useState } from 'react';
 import {
-  View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, Switch,
+  View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, Switch, StatusBar,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
 import { useAuthStore } from '../store/authStore';
-
-const D = {
-  bg: '#0F1923', card: '#1A2332', primary: '#00D09C',
-  gold: '#FFD700', live: '#FF4B55', text: '#FFFFFF',
-  textSec: '#8B9CB3', border: '#253047',
-};
+import { T } from '../config/theme';
 
 const LEVEL_NAMES = ['Rookie', 'Amateur', 'Pro', 'Expert', 'Elite', 'Legend'];
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuthStore();
-
   const [notifs, setNotifs] = useState(true);
 
   const levelName = LEVEL_NAMES[Math.min((user?.level ?? 1) - 1, LEVEL_NAMES.length - 1)];
@@ -25,181 +18,124 @@ export default function ProfileScreen() {
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out', style: 'destructive',
-        onPress: async () => { await signOut(); },
-      },
+      { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); } },
     ]);
   };
 
   const STATS = [
-    { label: 'Games', value: user?.gamesPlayed ?? 0, color: D.primary },
-    { label: 'Wins', value: user?.totalWins ?? 0, color: '#22C55E' },
-    { label: 'Streak', value: user?.winStreak ?? 0, color: '#F59E0B' },
-    { label: 'Level', value: user?.level ?? 1, color: '#7C3AED' },
+    { label: 'Games', value: user?.gamesPlayed ?? 0, color: T.blue },
+    { label: 'Wins',  value: user?.totalWins ?? 0,   color: T.primary },
+    { label: 'Streak', value: user?.winStreak ?? 0,  color: T.gold },
+    { label: 'Level', value: user?.level ?? 1,       color: T.purple },
   ];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: D.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Header */}
-        <LinearGradient
-          colors={['#1A2332', '#0F1923']}
-          style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 28 }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
-            <Text style={{ color: D.text, fontWeight: '800', fontSize: 18, flex: 1 }}>Profile</Text>
-          </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
-          {/* Avatar + name */}
-          <View style={{ alignItems: 'center' }}>
-            <View style={{
-              width: 80, height: 80, borderRadius: 40,
-              backgroundColor: D.primary + '30',
-              borderWidth: 2, borderColor: D.primary,
-              alignItems: 'center', justifyContent: 'center', marginBottom: 12,
-            }}>
-              <Text style={{ fontSize: 36 }}>🏏</Text>
-            </View>
-            <Text style={{ color: D.text, fontSize: 20, fontWeight: '800' }}>
-              {user?.username ?? 'Guest'}
+        {/* Header */}
+        <View style={{ backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: T.border, paddingHorizontal: 20, paddingVertical: 14 }}>
+          <Text style={{ color: T.text, fontWeight: '800', fontSize: 18 }}>Profile</Text>
+        </View>
+
+        {/* Avatar card */}
+        <View style={{ backgroundColor: '#FFF', padding: 24, alignItems: 'center', marginBottom: 12 }}>
+          <View style={{
+            width: 84, height: 84, borderRadius: 42,
+            backgroundColor: T.primaryLight,
+            borderWidth: 3, borderColor: T.primary,
+            alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+          }}>
+            <Text style={{ fontSize: 38 }}>🏏</Text>
+          </View>
+          <Text style={{ color: T.text, fontSize: 20, fontWeight: '800' }}>{user?.username ?? 'Player'}</Text>
+          {user?.email && <Text style={{ color: T.textSec, fontSize: 13, marginTop: 3 }}>{user.email}</Text>}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', marginTop: 10,
+            backgroundColor: T.purpleLight, borderRadius: 99,
+            paddingHorizontal: 14, paddingVertical: 5,
+          }}>
+            <Text style={{ color: T.purple, fontWeight: '700', fontSize: 13 }}>
+              Lv.{user?.level ?? 1} {levelName}
             </Text>
-            {user?.email && (
-              <Text style={{ color: D.textSec, fontSize: 12, marginTop: 2 }}>{user.email}</Text>
-            )}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', marginTop: 8,
-              backgroundColor: '#7C3AED20', borderRadius: 99,
-              paddingHorizontal: 14, paddingVertical: 4,
-              borderWidth: 1, borderColor: '#7C3AED40',
-            }}>
-              <Text style={{ color: '#7C3AED', fontWeight: '700', fontSize: 13 }}>
-                Lv.{user?.level ?? 1} {levelName}
-              </Text>
-            </View>
           </View>
 
           {/* XP bar */}
-          <View style={{ marginTop: 20 }}>
+          <View style={{ width: '100%', marginTop: 18 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-              <Text style={{ color: D.textSec, fontSize: 11 }}>XP Progress</Text>
-              <Text style={{ color: D.textSec, fontSize: 11 }}>{xpToNext} XP to next level</Text>
+              <Text style={{ color: T.textSec, fontSize: 11 }}>XP Progress</Text>
+              <Text style={{ color: T.textSec, fontSize: 11 }}>{xpToNext} XP to next level</Text>
             </View>
-            <View style={{ height: 6, backgroundColor: D.border, borderRadius: 99 }}>
-              <View style={{
-                height: '100%', width: `${xpProgress * 100}%`,
-                backgroundColor: '#7C3AED', borderRadius: 99,
-              }} />
+            <View style={{ height: 7, backgroundColor: T.border, borderRadius: 99 }}>
+              <View style={{ height: '100%', width: `${xpProgress * 100}%`, backgroundColor: T.purple, borderRadius: 99 }} />
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
-        {/* Stats grid */}
-        <View style={{
-          flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16,
-          gap: 10, marginTop: 16, marginBottom: 20,
-        }}>
+        {/* Stats */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10, marginBottom: 12 }}>
           {STATS.map(s => (
             <View key={s.label} style={{
-              width: '47%', backgroundColor: D.card, borderRadius: 14,
-              padding: 16, alignItems: 'center',
-              borderWidth: 1, borderColor: D.border,
+              width: '47%', backgroundColor: '#FFF', borderRadius: 14,
+              padding: 16, alignItems: 'center', ...T.shadowSm,
             }}>
               <Text style={{ color: s.color, fontSize: 26, fontWeight: '900' }}>{s.value}</Text>
-              <Text style={{ color: D.textSec, fontSize: 11, marginTop: 3 }}>{s.label}</Text>
+              <Text style={{ color: T.textSec, fontSize: 11, marginTop: 3 }}>{s.label}</Text>
             </View>
           ))}
         </View>
 
         {/* Token balance */}
-        <View style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-          <LinearGradient
-              colors={['#00D09C', '#00897B']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-              style={{
-                borderRadius: 16, padding: 18,
-                flexDirection: 'row', alignItems: 'center',
-              }}
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '600', letterSpacing: 1 }}>
-                  TOKEN BALANCE
-                </Text>
-                <Text style={{ color: '#fff', fontSize: 28, fontWeight: '900', marginTop: 2 }}>
-                  🪙 {user?.tokens?.toLocaleString() ?? '0'}
-                </Text>
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 22 }}>→</Text>
-          </LinearGradient>
+        <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: '#FFF', borderRadius: 16, padding: 18, ...T.shadowSm }}>
+          <Text style={{ color: T.textSec, fontSize: 11, fontWeight: '600', marginBottom: 6 }}>TOKEN BALANCE</Text>
+          <Text style={{ color: T.text, fontSize: 28, fontWeight: '900' }}>🪙 {user?.tokens?.toLocaleString() ?? '0'}</Text>
         </View>
 
         {/* Settings */}
         <View style={{ paddingHorizontal: 16 }}>
-          <Text style={{ color: D.text, fontWeight: '800', fontSize: 16, marginBottom: 12 }}>Settings</Text>
-
-          <View style={{
-            backgroundColor: D.card, borderRadius: 16,
-            borderWidth: 1, borderColor: D.border, overflow: 'hidden',
-          }}>
-            <SettingRow
-              icon="🔔"
-              label="Push Notifications"
-              right={
-                <Switch
-                  value={notifs}
-                  onValueChange={setNotifs}
-                  trackColor={{ false: D.border, true: D.primary + '80' }}
-                  thumbColor={notifs ? D.primary : D.textSec}
-                />
-              }
-            />
-            <View style={{ height: 1, backgroundColor: D.border }} />
-            <SettingRow icon="🔒" label="Privacy Policy" onPress={() => {}} />
-            <View style={{ height: 1, backgroundColor: D.border }} />
-            <SettingRow icon="📋" label="Terms of Service" onPress={() => {}} />
-            <View style={{ height: 1, backgroundColor: D.border }} />
-            <SettingRow icon="⭐" label="Rate App" onPress={() => {}} />
+          <Text style={{ color: T.text, fontWeight: '800', fontSize: 15, marginBottom: 12 }}>Settings</Text>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 16, overflow: 'hidden', ...T.shadowSm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+              <Text style={{ fontSize: 18, marginRight: 14 }}>🔔</Text>
+              <Text style={{ flex: 1, color: T.text, fontSize: 14 }}>Push Notifications</Text>
+              <Switch
+                value={notifs} onValueChange={setNotifs}
+                trackColor={{ false: T.border, true: T.primary + '80' }}
+                thumbColor={notifs ? T.primary : T.textMuted}
+              />
+            </View>
+            {[
+              { icon: '🔒', label: 'Privacy Policy' },
+              { icon: '📋', label: 'Terms of Service' },
+              { icon: '⭐', label: 'Rate App' },
+            ].map(item => (
+              <View key={item.label}>
+                <View style={{ height: 1, backgroundColor: T.border }} />
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <Text style={{ fontSize: 18, marginRight: 14 }}>{item.icon}</Text>
+                  <Text style={{ flex: 1, color: T.text, fontSize: 14 }}>{item.label}</Text>
+                  <Text style={{ color: T.textMuted, fontSize: 18 }}>›</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
 
-          {/* Sign out */}
           <TouchableOpacity
             onPress={handleSignOut}
             style={{
-              marginTop: 20, borderRadius: 14, padding: 16,
-              alignItems: 'center', borderWidth: 1, borderColor: D.live + '40',
-              backgroundColor: D.live + '10',
+              marginTop: 20, borderRadius: 14, padding: 16, alignItems: 'center',
+              backgroundColor: '#FFF', borderWidth: 1.5, borderColor: T.live + '40',
             }}
           >
-            <Text style={{ color: D.live, fontWeight: '700', fontSize: 15 }}>Sign Out</Text>
+            <Text style={{ color: T.live, fontWeight: '700', fontSize: 15 }}>Sign Out</Text>
           </TouchableOpacity>
 
-          <Text style={{ color: '#2A3A4A', fontSize: 11, textAlign: 'center', marginTop: 24 }}>
-            Thingy v1.0.0 · Made with ❤️ for cricket fans
+          <Text style={{ color: T.textMuted, fontSize: 11, textAlign: 'center', marginTop: 24 }}>
+            Thingy v1.0.0
           </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function SettingRow({
-  icon, label, right, onPress,
-}: {
-  icon: string; label: string; right?: React.ReactNode; onPress?: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={!onPress}
-      style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 16, paddingVertical: 14,
-      }}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      <Text style={{ fontSize: 18, marginRight: 14 }}>{icon}</Text>
-      <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 14 }}>{label}</Text>
-      {right ?? <Text style={{ color: '#253047', fontSize: 16 }}>›</Text>}
-    </TouchableOpacity>
   );
 }
