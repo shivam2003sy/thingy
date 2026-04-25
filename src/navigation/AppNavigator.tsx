@@ -10,6 +10,9 @@ import BattleScreen from '../screens/BattleScreen';
 import ResultScreen from '../screens/ResultScreen';
 import ContestScreen from '../screens/ContestScreen';
 import BallRushScreen from '../screens/BallRushScreen';
+import SeriesScreen from '../screens/SeriesScreen';
+import SeriesDetailScreen from '../screens/SeriesDetailScreen';
+import PlayerSearchScreen from '../screens/PlayerSearchScreen';
 import TabNavigator from './TabNavigator';
 
 export type RootStackParamList = {
@@ -23,6 +26,9 @@ export type RootStackParamList = {
   BallRush: { matchId: string; matchName: string };
   Wallet: undefined;
   Profile: undefined;
+  Series: undefined;
+  SeriesDetail: { seriesId: string; seriesName: string };
+  PlayerSearch: { playerId?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -113,7 +119,10 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen name="Battle" component={BattleScreen} options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="Result" component={ResultScreen} options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="ContestDetail" component={ContestScreen} options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="BallRush" component={BallRushScreen} options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="BallRush"      component={BallRushScreen}      options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="Series"        component={SeriesScreen}        options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="SeriesDetail"  component={SeriesDetailScreen}  options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="PlayerSearch"  component={PlayerSearchScreen}  options={{ animation: 'slide_from_right' }} />
           </>
         )}
       </Stack.Navigator>

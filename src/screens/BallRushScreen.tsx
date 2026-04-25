@@ -61,10 +61,37 @@ const PREDICTION_OPTIONS: Array<{ id: BallOutcome; label: string; emoji: string;
 
 const TOKEN_STEPS = [5, 10, 20, 50];
 
+function useCountdown(startsAt: number | null | undefined): string {
+  const [label, setLabel] = useState('');
+  useEffect(() => {
+    if (!startsAt) return;
+    const tick = () => {
+      const diff = startsAt - Date.now();
+      if (diff <= 0) { setLabel(''); return; }
+      const h   = Math.floor(diff / 3_600_000);
+      const min = Math.floor((diff % 3_600_000) / 60_000);
+      const sec = Math.floor((diff % 60_000) / 1_000);
+      setLabel(h > 0 ? `${h}h ${min}m` : `${min}:${sec.toString().padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [startsAt]);
+  return label;
+}
+
 export default function BallRushScreen({ navigation, route }: Props) {
   const { user, updateTokens } = useAuthStore();
-  const matchId: string = route.params?.matchId ?? 'mock_ipl_001';
-  const matchName: string = route.params?.matchName ?? 'Live Match';
+  const matchId: string   = route.params?.matchId   ?? 'mock_ipl_001';
+  const matchName: string = route.params?.matchName  ?? 'Live Match';
+  const isUpcoming: boolean     = route.params?.upcoming  ?? false;
+  const startsAt: number | null = route.params?.startsAt  ?? null;
+  const upcomingCountdown = useCountdown(isUpcoming ? startsAt : null);
+  // Dismiss locked overlay once countdown reaches zero
+  const [lockDismissed, setLockDismissed] = useState(false);
+  useEffect(() => {
+    if (isUpcoming && upcomingCountdown === '') setLockDismissed(true);
+  }, [upcomingCountdown]);
 
   const [window, setWindow] = useState<WindowPayload | null>(null);
   const [crowd, setCrowd] = useState<CrowdPayload | null>(null);
@@ -441,6 +468,41 @@ export default function BallRushScreen({ navigation, route }: Props) {
         streakCount={streak}
         onDismiss={() => setResultVisible(false)}
       />
+
+      {/* Upcoming match lock overlay */}
+      {isUpcoming && !lockDismissed && (
+        <View style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(10,10,28,0.92)',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text style={{ fontSize: 52, marginBottom: 16 }}>🔒</Text>
+          <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 20, textAlign: 'center', paddingHorizontal: 32 }}>
+            {matchName}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 8 }}>
+            Match hasn't started yet
+          </Text>
+          {upcomingCountdown ? (
+            <View style={{ marginTop: 24, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, paddingHorizontal: 28, paddingVertical: 14 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '700', letterSpacing: 1, textAlign: 'center', marginBottom: 4 }}>
+                STARTS IN
+              </Text>
+              <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 36, textAlign: 'center' }}>
+                {upcomingCountdown}
+              </Text>
+            </View>
+          ) : (
+            <Text style={{ color: '#4ADE80', fontWeight: '800', fontSize: 16, marginTop: 24 }}>Starting now!</Text>
+          )}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ marginTop: 36, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.6)', fontWeight: '700', fontSize: 14 }}>← Go back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

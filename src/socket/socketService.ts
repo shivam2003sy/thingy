@@ -237,14 +237,16 @@ class MockSocketService implements ISocketService {
   }
 
   getBallRushMatches() {
-    // Mock: fire a fake ball rush match
+    // Mock: fire next upcoming IPL fixture (no live match right now)
     this.schedule(() => this.fire('ballRushMatchList', [{
-      matchId: 'mock_ipl_001',
-      matchName: 'CSK vs MI · IPL 2026',
-      team1: { name: 'Chennai Super Kings', shortName: 'CSK', score: '142/3', overs: '14.0' },
-      team2: { name: 'Mumbai Indians',      shortName: 'MI',  score: '−',     overs: '0.0'  },
-      windowOpen: true,
-      windowClosesAt: Date.now() + 12_000,
+      matchId: 'mock_upcoming_001',
+      matchName: 'KKR vs LSG · IPL 2026',
+      team1: { name: 'Kolkata Knight Riders', shortName: 'KKR', score: '−', overs: '−' },
+      team2: { name: 'Lucknow Super Giants',  shortName: 'LSG', score: '−', overs: '−' },
+      windowOpen: false,
+      windowClosesAt: 0,
+      upcoming: true,
+      startsAt: Date.now() + 2 * 3_600_000, // 2 hours from now
     }]), 200);
   }
 
