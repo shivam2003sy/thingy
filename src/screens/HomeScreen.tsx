@@ -1,359 +1,400 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, SafeAreaView,
-  Animated, RefreshControl, StatusBar, ActivityIndicator,
+  View, Text, TouchableOpacity,
+  Animated, StatusBar, SectionList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/authStore';
-import { useCricketStore } from '../store/cricketStore';
-import { socketService } from '../socket/socketService';
 import { T } from '../config/theme';
-import type { CricMatchSummary } from '../services/cricketService';
+import {
+  IPL2026, IplMatch,
+  formatMatchDate, formatMatchTime,
+} from '../data/ipl2026Schedule';
+import { supabase } from '../config/supabase';
 
-interface BallRushMatch {
-  matchId: string;
-  matchName: string;
-  team1: { shortName: string; score: string };
-  team2: { shortName: string; score: string };
-  windowOpen: boolean;
-  windowClosesAt: number;
-  upcoming?: boolean;
-  startsAt?: number | null;
-}
-
-interface Contest {
-  id: string; matchName: string; title: string; entryFee: number;
-  prizePool: number; maxParticipants: number; participants: number;
-  endsAt: number; status: string;
-  options: Array<{ id: string; label: string; icon: string }>;
-  type: string; description: string; matchId: string;
-}
-
-type Tab = 'live' | 'fixtures';
 type Props = { navigation: NativeStackNavigationProp<any> };
 
-function useCountdown(startsAt: number | null | undefined): string {
-  const [label, setLabel] = useState('');
-  useEffect(() => {
-    if (!startsAt) return;
-    const tick = () => {
-      const diff = startsAt - Date.now();
-      if (diff <= 0) { setLabel('Starting!'); return; }
-      const h   = Math.floor(diff / 3_600_000);
-      const min = Math.floor((diff % 3_600_000) / 60_000);
-      const sec = Math.floor((diff % 60_000) / 1_000);
-      setLabel(h > 0 ? `${h}h ${min}m` : `${min}:${sec.toString().padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1_000);
-    return () => clearInterval(id);
-  }, [startsAt]);
-  return label;
+interface DbMatch {
+  id: string;
+  team1_short: string;
+  team2_short: string;
+  team1_score: number;
+  team1_wickets: number;
+  team1_overs: number;
+  team2_score: number;
+  team2_wickets: number;
+  team2_overs: number;
+  is_live: boolean;
+  is_completed: boolean;
+  current_over: number;
 }
 
-function BallRushCard({ m, liveDot, onPress }: { m: BallRushMatch; liveDot: Animated.Value; onPress: () => void }) {
-  const countdown = useCountdown(m.upcoming ? m.startsAt : null);
+type CardStatus = 'live' | 'upcoming' | 'past';
+
+function matchKey(a: string, b: string) {
+  return [a.toUpperCase(), b.toUpperCase()].sort().join('|');
+}
+
+function formatOvers(overs: number | string | null): string {
+  if (overs == null) return '0.0';
+  const n = typeof overs === 'string' ? parseFloat(overs) : overs;
+  if (isNaN(n)) return '0.0';
+  return n.toFixed(1);
+}
+
+function formatCountdown(targetMs: number, nowMs: number): string {
+  const diff = targetMs - nowMs;
+  if (diff <= 0) return '';
+  const h   = Math.floor(diff / 3_600_000);
+  const min = Math.floor((diff % 3_600_000) / 60_000);
+  const sec = Math.floor((diff % 60_000) / 1_000);
+  return h > 0 ? `${h}h ${min}m` : `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
+function buildSections(
+  now: number,
+  dbMap: Map<string, DbMatch>,
+) {
+  const live: Array<{ match: IplMatch; db: DbMatch }> = [];
+  const byDate = new Map<string, IplMatch[]>();
+  const usedKeys = new Set<string>(); // prevent same DB match appearing twice
+
+  for (const m of IPL2026) {
+    const key = matchKey(m.homeShort, m.awayShort);
+    const db  = dbMap.get(key);
+
+    if (db?.is_live && !usedKeys.has(key)) {
+      usedKeys.add(key);
+      live.push({ match: m, db });
+      continue;
+    }
+    if (db?.is_live && usedKeys.has(key)) continue; // skip duplicate
+
+    // Past if completed in DB, or date has passed without a DB entry
+    const startMs  = new Date(m.dateTimeIST).getTime();
+    const isPast   = db?.is_completed || now > startMs + 4 * 3_600_000;
+    if (isPast) continue; // hide finished matches
+
+    const dateLabel = formatMatchDate(m.dateTimeIST);
+    if (!byDate.has(dateLabel)) byDate.set(dateLabel, []);
+    byDate.get(dateLabel)!.push(m);
+  }
+
+  const sections: Array<{ title: string; data: IplMatch[]; dbMap?: Map<string, DbMatch> }> = [];
+
+  if (live.length > 0) {
+    sections.push({
+      title: '🔴 LIVE NOW',
+      data:  live.map(l => l.match),
+      dbMap,
+    });
+  }
+
+  for (const [title, data] of byDate) {
+    sections.push({ title, data });
+  }
+
+  return sections;
+}
+
+// ─── Match card ───────────────────────────────────────────────────────────────
+
+const MatchCard = memo(function MatchCard({
+  match, db, now, liveDot, onPress,
+}: {
+  match:   IplMatch;
+  db?:     DbMatch;
+  now:     number;
+  liveDot: Animated.Value;
+  onPress: () => void;
+}) {
+  const isLive   = !!db?.is_live;
+  const startMs  = new Date(match.dateTimeIST).getTime();
+  const countdown = !isLive ? formatCountdown(startMs, now) : '';
+
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
-      <LinearGradient
-        colors={m.upcoming ? ['#1C1C3A', '#252550'] : ['#1E1B4B', '#312E81']}
-        style={{ width: 210, borderRadius: 18, padding: 16 }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-          {m.upcoming ? (
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>UPCOMING MATCH</Text>
-          ) : (
-            <>
-              <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: T.live, marginRight: 6, opacity: liveDot }} />
-              <Text style={{ color: T.live, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>PREDICT EVERY BALL</Text>
-            </>
-          )}
-        </View>
-        <Text style={{ color: m.upcoming ? 'rgba(255,255,255,0.5)' : '#FFF', fontWeight: '800', fontSize: 15, marginBottom: 10 }} numberOfLines={2}>
-          {m.matchName}
-        </Text>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, opacity: m.upcoming ? 0.4 : 1 }}>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>{m.team1.shortName}</Text>
-            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>{m.team1.score}</Text>
+    <TouchableOpacity
+      onPress={isLive ? onPress : undefined}
+      activeOpacity={isLive ? 0.75 : 1}
+      style={{ marginBottom: 10 }}
+    >
+      <View style={{
+        backgroundColor: isLive ? 'rgba(74,222,128,0.06)' : 'rgba(255,255,255,0.04)',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: isLive ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.07)',
+        padding: 16,
+      }}>
+        {/* Top row */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {isLive ? (
+              <>
+                <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: T.live, opacity: liveDot }} />
+                <Text style={{ color: T.live, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>LIVE</Text>
+                {db && <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }}>· Over {db.current_over}</Text>}
+              </>
+            ) : (
+              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600' }}>Match {match.matchNo}</Text>
+            )}
           </View>
-          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13, alignSelf: 'center' }}>vs</Text>
-          <View style={{ alignItems: 'center' }}>
-            <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>{m.team2.shortName}</Text>
-            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>{m.team2.score}</Text>
-          </View>
-        </View>
-        <View style={{
-          backgroundColor: m.upcoming ? 'rgba(255,255,255,0.08)' : m.windowOpen ? T.live : 'rgba(255,255,255,0.15)',
-          borderRadius: 10, paddingVertical: 8, alignItems: 'center',
-        }}>
-          <Text style={{ color: m.upcoming ? 'rgba(255,255,255,0.5)' : '#FFF', fontWeight: '800', fontSize: 12 }}>
-            {m.upcoming ? `🔒 Starts in ${countdown}` : m.windowOpen ? '🔥 PREDICT NOW!' : '⏳ Next ball soon...'}
+          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>
+            {formatMatchTime(match.dateTimeIST)}
           </Text>
         </View>
-      </LinearGradient>
+
+        {/* Teams + score */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          {/* Team 1 */}
+          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 22, letterSpacing: -0.5 }}>
+              {match.homeShort}
+            </Text>
+            {isLive && db ? (
+              <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14, marginTop: 2 }}>
+                {db.team1_score}/{db.team1_wickets}
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontWeight: '500', fontSize: 11 }}>
+                  {' '}({formatOvers(db.team1_overs)})
+                </Text>
+              </Text>
+            ) : (
+              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                {match.home}
+              </Text>
+            )}
+          </View>
+
+          {/* Middle */}
+          <View style={{ alignItems: 'center', paddingHorizontal: 12 }}>
+            {isLive ? (
+              <LinearGradient
+                colors={['#4ADE80', '#22C55E']}
+                style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 }}
+              >
+                <Text style={{ color: '#000', fontWeight: '900', fontSize: 11 }}>PREDICT</Text>
+              </LinearGradient>
+            ) : (
+              <View style={{ alignItems: 'center', gap: 2 }}>
+                <Text style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, fontWeight: '700' }}>vs</Text>
+                <Text style={{ fontSize: 13 }}>🔒</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Team 2 */}
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 22, letterSpacing: -0.5 }}>
+              {match.awayShort}
+            </Text>
+            {isLive && db ? (
+              <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14, marginTop: 2 }}>
+                {db.team2_score}/{db.team2_wickets}
+                <Text style={{ color: 'rgba(255,255,255,0.4)', fontWeight: '500', fontSize: 11 }}>
+                  {' '}({formatOvers(db.team2_overs)})
+                </Text>
+              </Text>
+            ) : (
+              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 2 }} numberOfLines={1}>
+                {match.away}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* Bottom row */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+          marginTop: 12, paddingTop: 10,
+          borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)',
+        }}>
+          <Text style={{ color: 'rgba(255,255,255,0.22)', fontSize: 11 }}>📍 {match.venue}</Text>
+          {countdown ? (
+            <View style={{
+              backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 8,
+              paddingHorizontal: 10, paddingVertical: 4,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}>
+              <Text style={{ fontSize: 10 }}>⏱</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.55)', fontWeight: '700', fontSize: 12 }}>{countdown}</Text>
+            </View>
+          ) : isLive ? (
+            <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 12 }}>Tap to predict →</Text>
+          ) : null}
+        </View>
+      </View>
     </TouchableOpacity>
   );
-}
+});
 
-function MatchCard({ m, liveDot }: { m: CricMatchSummary; liveDot: Animated.Value }) {
-  const isLive = m.ms === 'live';
-  const team1 = m.teamInfo?.[0];
-  const team2 = m.teamInfo?.[1];
-  const name1 = team1?.shortname ?? m.t1?.replace(/\s*\[.*?\]/, '') ?? m.teams?.[0] ?? '−';
-  const name2 = team2?.shortname ?? m.t2?.replace(/\s*\[.*?\]/, '') ?? m.teams?.[1] ?? '−';
-  const score1 = m.t1s || (m.score?.[0] ? `${m.score[0].r}/${m.score[0].w}` : '−');
-  const score2 = m.t2s || (m.score?.[1] ? `${m.score[1].r}/${m.score[1].w}` : '−');
-
-  return (
-    <View style={{ width: 190, backgroundColor: '#FFF', borderRadius: 16, padding: 16, ...T.shadow }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-        {isLive ? (
-          <>
-            <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: T.live, marginRight: 6, opacity: liveDot }} />
-            <Text style={{ color: T.live, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>LIVE</Text>
-          </>
-        ) : (
-          <Text style={{ color: T.textSec, fontSize: 10, fontWeight: '600' }}>
-            {m.dateTimeGMT ? new Date(m.dateTimeGMT).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'UPCOMING'}
-          </Text>
-        )}
-      </View>
-      <Text style={{ color: T.text, fontWeight: '700', fontSize: 12, marginBottom: 8 }} numberOfLines={2}>{m.name}</Text>
-      {[{ name: name1, score: score1 }, { name: name2, score: score2 }].map((t, i) => (
-        <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 }}>
-          <Text style={{ color: i === 0 ? T.text : T.textSec, fontWeight: i === 0 ? '700' : '500', fontSize: 12 }}>{t.name}</Text>
-          <Text style={{ color: i === 0 ? T.text : T.textSec, fontSize: 12 }}>{t.score}</Text>
-        </View>
-      ))}
-      {isLive && m.status ? (
-        <Text style={{ color: T.textMuted, fontSize: 10, marginTop: 6 }} numberOfLines={1}>{m.status}</Text>
-      ) : null}
-    </View>
-  );
-}
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ navigation }: Props) {
   const { user } = useAuthStore();
-  const { liveMatches, fixtures, loadingMatches, loadingFixtures, loadLiveMatches, loadFixtures } = useCricketStore();
-  const [contests,        setContests]        = useState<Contest[]>([]);
-  const [ballRushMatches, setBallRushMatches] = useState<BallRushMatch[]>([]);
-  const [activeTab,       setActiveTab]       = useState<Tab>('live');
-  const [refreshing,      setRefreshing]      = useState(false);
+  const [now, setNow]     = useState(() => Date.now());
+  const [dbMap, setDbMap] = useState<Map<string, DbMatch>>(new Map());
   const liveDot = useRef(new Animated.Value(1)).current;
 
+  // Build lookup map from Supabase rows
+  const updateDbMap = useCallback((rows: DbMatch[]) => {
+    const map = new Map<string, DbMatch>();
+    for (const r of rows) {
+      map.set(matchKey(r.team1_short, r.team2_short), r);
+    }
+    setDbMap(map);
+  }, []);
+
+  // Initial fetch
+  useEffect(() => {
+    supabase
+      .from('ipl_matches')
+      .select('id,team1_short,team2_short,team1_score,team1_wickets,team1_overs,team2_score,team2_wickets,team2_overs,is_live,is_completed,current_over')
+      .then(({ data }) => { if (data) updateDbMap(data as DbMatch[]); });
+  }, []);
+
+  // Realtime subscription — updates scores and live status instantly
+  useEffect(() => {
+    const channel = supabase
+      .channel('home-matches')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ipl_matches' }, () => {
+        supabase
+          .from('ipl_matches')
+          .select('id,team1_short,team2_short,team1_score,team1_wickets,team1_overs,team2_score,team2_wickets,team2_overs,is_live,is_completed,current_over')
+          .then(({ data }) => { if (data) updateDbMap(data as DbMatch[]); });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [updateDbMap]);
+
+  // Countdown tick every 5s
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Live dot pulse
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(liveDot, { toValue: 0.3, duration: 700, useNativeDriver: true }),
-        Animated.timing(liveDot, { toValue: 1,   duration: 700, useNativeDriver: true }),
+        Animated.timing(liveDot, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+        Animated.timing(liveDot, { toValue: 1,    duration: 700, useNativeDriver: true }),
       ])
     ).start();
-
-    // Load real data from CricAPI (via backend)
-    loadLiveMatches();
-    loadFixtures();
-
-    socketService.on('contests',        (d: Contest[])       => setContests(d));
-    socketService.on('contestsUpdated', (d: Contest[])       => setContests(d));
-    socketService.on('ballRushMatchList',(d: BallRushMatch[]) => setBallRushMatches(d));
-    socketService.getBallRushMatches();
-
-    return () => {
-      socketService.off('contests');
-      socketService.off('contestsUpdated');
-      socketService.off('ballRushMatchList');
-    };
   }, []);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([loadLiveMatches(), loadFixtures()]);
-    setRefreshing(false);
-  };
+  const sections = useMemo(() => buildSections(now, dbMap), [now, dbMap]);
+  const liveCount = useMemo(() => Array.from(dbMap.values()).filter(m => m.is_live).length, [dbMap]);
 
-  const displayedMatches = activeTab === 'live' ? liveMatches : fixtures;
-  const isLoading = activeTab === 'live' ? loadingMatches : loadingFixtures;
+  const handleMatchPress = useCallback((item: IplMatch, db?: DbMatch) => {
+    navigation.navigate('OverPrediction', {
+      matchId:   db?.id ?? item.id,
+      matchName: `${item.homeShort} vs ${item.awayShort} · IPL 2026`,
+    });
+  }, [navigation]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle="dark-content" backgroundColor={T.bg} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#080D18' }}>
+      <StatusBar barStyle="light-content" backgroundColor="#080D18" />
 
       {/* Header */}
       <View style={{
         flexDirection: 'row', alignItems: 'center',
         paddingHorizontal: 20, paddingVertical: 14,
-        backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: T.border,
+        borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)',
       }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: T.textSec, fontSize: 12 }}>Welcome back 👋</Text>
-          <Text style={{ color: T.text, fontSize: 17, fontWeight: '800' }}>{user?.username ?? 'Player'}</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Welcome back 👋</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 }}>
+            <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>{user?.username ?? 'Player'}</Text>
+            {liveCount > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                <Animated.View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: T.live, opacity: liveDot }} />
+                <Text style={{ color: T.live, fontSize: 10, fontWeight: '800' }}>{liveCount} LIVE</Text>
+              </View>
+            )}
+          </View>
         </View>
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            backgroundColor: T.goldLight, borderRadius: 99,
-            paddingHorizontal: 14, paddingVertical: 8,
-          }}
-        >
-          <Text style={{ fontSize: 16 }}>🪙</Text>
-          <Text style={{ color: '#92400E', fontWeight: '800', fontSize: 14 }}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          backgroundColor: 'rgba(245,158,11,0.12)', borderRadius: 99,
+          paddingHorizontal: 14, paddingVertical: 8,
+        }}>
+          <Text style={{ fontSize: 15 }}>🪙</Text>
+          <Text style={{ color: T.gold, fontWeight: '800', fontSize: 15 }}>
             {user?.tokens?.toLocaleString() ?? '0'}
           </Text>
-        </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={T.primary} />}
-        contentContainerStyle={{ paddingBottom: 32 }}
-      >
-        {/* Play banner */}
-        <View style={{ margin: 16 }}>
-          <LinearGradient
-            colors={[T.primary, T.primaryDark]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={{ borderRadius: 20, padding: 22 }}
-          >
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 }}>
-              READY TO PLAY?
-            </Text>
-            <Text style={{ color: '#FFF', fontSize: 22, fontWeight: '800', marginTop: 4, marginBottom: 16 }}>
-              Start a 1v1 Battle
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('Battle')}
-                style={{
-                  backgroundColor: '#FFF', borderRadius: 12,
-                  paddingVertical: 11, paddingHorizontal: 20,
-                  flexDirection: 'row', alignItems: 'center', gap: 8,
-                }}
-              >
-                <Text style={{ color: T.primary, fontWeight: '800', fontSize: 14 }}>Find Opponent</Text>
-                <Text style={{ fontSize: 14 }}>⚡</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('PlayerSearch')}
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12,
-                  paddingVertical: 11, paddingHorizontal: 16,
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                }}
-              >
-                <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 14 }}>Players</Text>
-                <Text style={{ fontSize: 14 }}>🔍</Text>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* Ball Rush */}
-        {ballRushMatches.length > 0 && (
-          <>
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 10 }}>
-              <Text style={{ fontSize: 18, marginRight: 6 }}>⚡</Text>
-              <Text style={{ color: T.text, fontWeight: '800', fontSize: 16 }}>Ball Rush</Text>
-              {ballRushMatches.some(m => !m.upcoming) && (
-                <View style={{ marginLeft: 8, backgroundColor: T.live, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
-                  <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>LIVE</Text>
-                </View>
-              )}
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 4 }}>
-              {ballRushMatches.map(m => (
-                <BallRushCard key={m.matchId} m={m} liveDot={liveDot} onPress={() =>
-                  navigation.navigate('BallRush', {
-                    matchId: m.matchId, matchName: m.matchName,
-                    upcoming: m.upcoming ?? false, startsAt: m.startsAt ?? null,
-                  })
-                } />
-              ))}
-            </ScrollView>
-          </>
-        )}
-
-        {/* Matches section with Live / Fixtures tabs */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(['live', 'fixtures'] as Tab[]).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={{
-                  paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20,
-                  backgroundColor: activeTab === tab ? T.primary : T.border,
-                }}
-              >
-                <Text style={{ color: activeTab === tab ? '#FFF' : T.textSec, fontWeight: '700', fontSize: 13 }}>
-                  {tab === 'live' ? '🔴 Live' : '📅 Fixtures'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Series')}>
-            <Text style={{ color: T.primary, fontWeight: '700', fontSize: 13 }}>Series →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {isLoading ? (
-          <ActivityIndicator color={T.primary} style={{ marginVertical: 24 }} />
-        ) : displayedMatches.length === 0 ? (
-          <Text style={{ color: T.textSec, textAlign: 'center', marginVertical: 24, fontSize: 13 }}>
-            {activeTab === 'live' ? 'No live matches right now' : 'No upcoming fixtures'}
+      {/* Subtitle */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: 20, paddingTop: 14, paddingBottom: 6,
+      }}>
+        <View>
+          <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 17 }}>IPL 2026 Schedule</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: 2 }}>
+            70 matches · tap live to predict
           </Text>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 4, paddingTop: 8 }}>
-            {displayedMatches.map(m => (
-              <MatchCard key={m.id} m={m} liveDot={liveDot} />
-            ))}
-          </ScrollView>
-        )}
+        </View>
+        <View style={{
+          backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 10,
+          paddingHorizontal: 10, paddingVertical: 5,
+          borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
+        }}>
+          <Text style={{ color: '#4ADE80', fontWeight: '800', fontSize: 11 }}>BALL RUSH</Text>
+        </View>
+      </View>
 
-        {/* Contests */}
-        {contests.length > 0 && (
-          <>
-            <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 }}>
-              <Text style={{ color: T.text, fontWeight: '800', fontSize: 16 }}>Open Contests</Text>
-              <Text style={{ color: T.textSec, fontSize: 12, marginTop: 2 }}>Win big with your predictions</Text>
-            </View>
-            <View style={{ paddingHorizontal: 16, gap: 12 }}>
-              {contests.map(c => {
-                const fill = Math.min((c.participants / c.maxParticipants) * 100, 100);
-                const mins = Math.max(0, Math.floor((c.endsAt - Date.now()) / 60000));
-                return (
-                  <TouchableOpacity
-                    key={c.id}
-                    onPress={() => navigation.navigate('ContestDetail', { contest: c })}
-                    style={{ backgroundColor: '#FFF', borderRadius: 18, padding: 18, ...T.shadow }}
-                    activeOpacity={0.85}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: T.textSec, fontSize: 11, fontWeight: '600', marginBottom: 3 }}>{c.matchName}</Text>
-                        <Text style={{ color: T.text, fontWeight: '800', fontSize: 15 }}>{c.title}</Text>
-                      </View>
-                      <View style={{ backgroundColor: T.goldLight, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 }}>
-                        <Text style={{ color: '#92400E', fontWeight: '800', fontSize: 13 }}>🏆 {c.prizePool.toLocaleString()}</Text>
-                      </View>
-                    </View>
-                    <View style={{ height: 5, backgroundColor: T.border, borderRadius: 99, marginBottom: 10 }}>
-                      <View style={{ height: '100%', width: `${fill}%`, backgroundColor: fill > 80 ? T.live : T.primary, borderRadius: 99 }} />
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ color: T.textSec, fontSize: 12 }}>{c.maxParticipants - c.participants} spots · ⏱ {mins}m</Text>
-                      <View style={{ backgroundColor: T.primaryLight, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 6 }}>
-                        <Text style={{ color: T.primaryDark, fontWeight: '700', fontSize: 12 }}>🪙 {c.entryFee} · Join</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
+      {/* Legend */}
+      <View style={{ flexDirection: 'row', gap: 14, paddingHorizontal: 20, paddingBottom: 10 }}>
+        {[
+          { color: '#4ADE80',               label: 'Live — tap to predict' },
+          { color: 'rgba(255,255,255,0.25)', label: 'Upcoming — locked' },
+        ].map(item => (
+          <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: item.color }} />
+            <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }}>{item.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* List */}
+      <SectionList
+        sections={sections}
+        keyExtractor={item => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        stickySectionHeadersEnabled={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={{ paddingTop: title === sections[0]?.title ? 2 : 16, paddingBottom: 8 }}>
+            <Text style={{
+              color: title === '🔴 LIVE NOW' ? T.live : 'rgba(255,255,255,0.35)',
+              fontSize: 11, fontWeight: '800', letterSpacing: 1,
+            }}>
+              {title}
+            </Text>
+          </View>
         )}
-      </ScrollView>
+        renderItem={({ item }) => {
+          const key = matchKey(item.homeShort, item.awayShort);
+          const db  = dbMap.get(key);
+          return (
+            <MatchCard
+              match={item}
+              db={db}
+              now={now}
+              liveDot={liveDot}
+              onPress={() => handleMatchPress(item, db)}
+            />
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }

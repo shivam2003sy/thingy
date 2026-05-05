@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, SafeAreaView, ScrollView, TouchableOpacity, Alert, Switch, StatusBar,
+  View, Text, ScrollView, TouchableOpacity, Alert, Switch, StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/authStore';
 import { T } from '../config/theme';
 

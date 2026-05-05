@@ -28,8 +28,6 @@
  * STEP 5 — Uncomment the firebase import below and the function bodies
  *
  * STEP 6 — Backend: set FIREBASE_SERVICE_ACCOUNT env var
- *   Firebase Console → Project Settings → Service Accounts → Generate new private key
- *   Copy the JSON content → thingy-backend/.env → FIREBASE_SERVICE_ACCOUNT='{"type":"service_account",...}'
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -39,16 +37,8 @@
 const BACKEND_URL: string | null = null; // e.g. 'http://10.0.2.2:3001' for Android emulator
 
 async function registerTokenWithBackend(fcmToken: string, userId: string): Promise<void> {
-  if (!BACKEND_URL) return;
-  try {
-    await fetch(`${BACKEND_URL}/api/register-push-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, fcmToken }),
-    });
-  } catch {
-    // non-critical — token will be registered next session
-  }
+  // Backend removed - tokens can be stored in Supabase if needed
+  return;
 }
 
 /**
