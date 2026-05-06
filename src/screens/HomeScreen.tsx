@@ -9,16 +9,20 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../store/authStore';
 import { T } from '../config/theme';
 import {
-  IPL2026, IplMatch,
   formatMatchDate, formatMatchTime,
 } from '../data/ipl2026Schedule';
 import { supabase } from '../config/supabase';
 
 type Props = { navigation: NativeStackNavigationProp<any> };
 
-interface DbMatch {
+interface Match {
   id: string;
+  match_name: string;
+  match_date: string;
+  venue: string;
+  team1_name: string;
   team1_short: string;
+  team2_name: string;
   team2_short: string;
   team1_score: number;
   team1_wickets: number;
@@ -32,10 +36,6 @@ interface DbMatch {
 }
 
 type CardStatus = 'live' | 'upcoming' | 'past';
-
-function matchKey(a: string, b: string) {
-  return [a.toUpperCase(), b.toUpperCase()].sort().join('|');
-}
 
 function formatOvers(overs: number | string | null): string {
   if (overs == null) return '0.0';
@@ -55,44 +55,50 @@ function formatCountdown(targetMs: number, nowMs: number): string {
 
 function buildSections(
   now: number,
-  dbMap: Map<string, DbMatch>,
+  matches: Match[],
 ) {
-  const live: Array<{ match: IplMatch; db: DbMatch }> = [];
-  const byDate = new Map<string, IplMatch[]>();
-  const usedKeys = new Set<string>(); // prevent same DB match appearing twice
+  const live: Match[] = [];
+  const byDate = new Map<string, Match[]>();
 
-  for (const m of IPL2026) {
-    const key = matchKey(m.homeShort, m.awayShort);
-    const db  = dbMap.get(key);
-
-    if (db?.is_live && !usedKeys.has(key)) {
-      usedKeys.add(key);
-      live.push({ match: m, db });
+  for (const match of matches) {
+    // Live matches
+    if (match.is_live) {
+      live.push(match);
       continue;
     }
-    if (db?.is_live && usedKeys.has(key)) continue; // skip duplicate
 
-    // Past if completed in DB, or date has passed without a DB entry
-    const startMs  = new Date(m.dateTimeIST).getTime();
-    const isPast   = db?.is_completed || now > startMs + 4 * 3_600_000;
-    if (isPast) continue; // hide finished matches
+    // Skip completed matches
+    if (match.is_completed) continue;
 
-    const dateLabel = formatMatchDate(m.dateTimeIST);
+    // Skip past matches (more than 4 hours after match date)
+    const matchDate = new Date(match.match_date);
+    const startMs = matchDate.getTime();
+    const isPast = now > startMs + 4 * 3_600_000;
+    if (isPast) continue;
+
+    // Group upcoming matches by date
+    const dateLabel = formatMatchDate(match.match_date);
     if (!byDate.has(dateLabel)) byDate.set(dateLabel, []);
-    byDate.get(dateLabel)!.push(m);
+    byDate.get(dateLabel)!.push(match);
   }
 
-  const sections: Array<{ title: string; data: IplMatch[]; dbMap?: Map<string, DbMatch> }> = [];
+  const sections: Array<{ title: string; data: Match[] }> = [];
 
   if (live.length > 0) {
     sections.push({
       title: '🔴 LIVE NOW',
-      data:  live.map(l => l.match),
-      dbMap,
+      data: live,
     });
   }
 
-  for (const [title, data] of byDate) {
+  // Sort dates chronologically
+  const sortedDates = Array.from(byDate.entries()).sort((a, b) => {
+    const dateA = new Date(a[1][0].match_date).getTime();
+    const dateB = new Date(b[1][0].match_date).getTime();
+    return dateA - dateB;
+  });
+
+  for (const [title, data] of sortedDates) {
     sections.push({ title, data });
   }
 
@@ -102,16 +108,15 @@ function buildSections(
 // ─── Match card ───────────────────────────────────────────────────────────────
 
 const MatchCard = memo(function MatchCard({
-  match, db, now, liveDot, onPress,
+  match, now, liveDot, onPress,
 }: {
-  match:   IplMatch;
-  db?:     DbMatch;
+  match:   Match;
   now:     number;
   liveDot: Animated.Value;
   onPress: () => void;
 }) {
-  const isLive   = !!db?.is_live;
-  const startMs  = new Date(match.dateTimeIST).getTime();
+  const isLive   = match.is_live;
+  const startMs  = new Date(match.match_date).getTime();
   const countdown = !isLive ? formatCountdown(startMs, now) : '';
 
   return (
@@ -134,14 +139,14 @@ const MatchCard = memo(function MatchCard({
               <>
                 <Animated.View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: T.live, opacity: liveDot }} />
                 <Text style={{ color: T.live, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>LIVE</Text>
-                {db && <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }}>· Over {db.current_over}</Text>}
+                {match.current_over > 0 && <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10 }}>· Over {match.current_over}</Text>}
               </>
             ) : (
-              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600' }}>Match {match.matchNo}</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: '600' }}>{match.match_name}</Text>
             )}
           </View>
           <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>
-            {formatMatchTime(match.dateTimeIST)}
+            {formatMatchTime(match.match_date)}
           </Text>
         </View>
 
@@ -150,18 +155,18 @@ const MatchCard = memo(function MatchCard({
           {/* Team 1 */}
           <View style={{ flex: 1, alignItems: 'flex-start' }}>
             <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 22, letterSpacing: -0.5 }}>
-              {match.homeShort}
+              {match.team1_short}
             </Text>
-            {isLive && db ? (
+            {isLive ? (
               <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14, marginTop: 2 }}>
-                {db.team1_score}/{db.team1_wickets}
+                {match.team1_score}/{match.team1_wickets}
                 <Text style={{ color: 'rgba(255,255,255,0.4)', fontWeight: '500', fontSize: 11 }}>
-                  {' '}({formatOvers(db.team1_overs)})
+                  {' '}({formatOvers(match.team1_overs)})
                 </Text>
               </Text>
             ) : (
               <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                {match.home}
+                {match.team1_name}
               </Text>
             )}
           </View>
@@ -186,18 +191,18 @@ const MatchCard = memo(function MatchCard({
           {/* Team 2 */}
           <View style={{ flex: 1, alignItems: 'flex-end' }}>
             <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 22, letterSpacing: -0.5 }}>
-              {match.awayShort}
+              {match.team2_short}
             </Text>
-            {isLive && db ? (
+            {isLive ? (
               <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14, marginTop: 2 }}>
-                {db.team2_score}/{db.team2_wickets}
+                {match.team2_score}/{match.team2_wickets}
                 <Text style={{ color: 'rgba(255,255,255,0.4)', fontWeight: '500', fontSize: 11 }}>
-                  {' '}({formatOvers(db.team2_overs)})
+                  {' '}({formatOvers(match.team2_overs)})
                 </Text>
               </Text>
             ) : (
               <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 2 }} numberOfLines={1}>
-                {match.away}
+                {match.team2_name}
               </Text>
             )}
           </View>
@@ -232,41 +237,36 @@ const MatchCard = memo(function MatchCard({
 
 export default function HomeScreen({ navigation }: Props) {
   const { user } = useAuthStore();
-  const [now, setNow]     = useState(() => Date.now());
-  const [dbMap, setDbMap] = useState<Map<string, DbMatch>>(new Map());
+  const [now, setNow] = useState(() => Date.now());
+  const [matches, setMatches] = useState<Match[]>([]);
   const liveDot = useRef(new Animated.Value(1)).current;
 
-  // Build lookup map from Supabase rows
-  const updateDbMap = useCallback((rows: DbMatch[]) => {
-    const map = new Map<string, DbMatch>();
-    for (const r of rows) {
-      map.set(matchKey(r.team1_short, r.team2_short), r);
-    }
-    setDbMap(map);
+  // Fetch all matches from database
+  const fetchMatches = useCallback(async () => {
+    const { data } = await supabase
+      .from('ipl_matches')
+      .select('*')
+      .order('match_date', { ascending: true });
+    
+    if (data) setMatches(data as Match[]);
   }, []);
 
   // Initial fetch
   useEffect(() => {
-    supabase
-      .from('ipl_matches')
-      .select('id,team1_short,team2_short,team1_score,team1_wickets,team1_overs,team2_score,team2_wickets,team2_overs,is_live,is_completed,current_over')
-      .then(({ data }) => { if (data) updateDbMap(data as DbMatch[]); });
-  }, []);
+    fetchMatches();
+  }, [fetchMatches]);
 
   // Realtime subscription — updates scores and live status instantly
   useEffect(() => {
     const channel = supabase
       .channel('home-matches')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ipl_matches' }, () => {
-        supabase
-          .from('ipl_matches')
-          .select('id,team1_short,team2_short,team1_score,team1_wickets,team1_overs,team2_score,team2_wickets,team2_overs,is_live,is_completed,current_over')
-          .then(({ data }) => { if (data) updateDbMap(data as DbMatch[]); });
+        fetchMatches();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [updateDbMap]);
+  }, [fetchMatches]);
 
   // Countdown tick every 5s
   useEffect(() => {
@@ -284,13 +284,13 @@ export default function HomeScreen({ navigation }: Props) {
     ).start();
   }, []);
 
-  const sections = useMemo(() => buildSections(now, dbMap), [now, dbMap]);
-  const liveCount = useMemo(() => Array.from(dbMap.values()).filter(m => m.is_live).length, [dbMap]);
+  const sections = useMemo(() => buildSections(now, matches), [now, matches]);
+  const liveCount = useMemo(() => matches.filter(m => m.is_live).length, [matches]);
 
-  const handleMatchPress = useCallback((item: IplMatch, db?: DbMatch) => {
+  const handleMatchPress = useCallback((match: Match) => {
     navigation.navigate('OverPrediction', {
-      matchId:   db?.id ?? item.id,
-      matchName: `${item.homeShort} vs ${item.awayShort} · IPL 2026`,
+      matchId: match.id,
+      matchName: `${match.team1_short} vs ${match.team2_short} · IPL 2026`,
     });
   }, [navigation]);
 
@@ -381,19 +381,14 @@ export default function HomeScreen({ navigation }: Props) {
             </Text>
           </View>
         )}
-        renderItem={({ item }) => {
-          const key = matchKey(item.homeShort, item.awayShort);
-          const db  = dbMap.get(key);
-          return (
-            <MatchCard
-              match={item}
-              db={db}
-              now={now}
-              liveDot={liveDot}
-              onPress={() => handleMatchPress(item, db)}
-            />
-          );
-        }}
+        renderItem={({ item }) => (
+          <MatchCard
+            match={item}
+            now={now}
+            liveDot={liveDot}
+            onPress={() => handleMatchPress(item)}
+          />
+        )}
       />
     </SafeAreaView>
   );

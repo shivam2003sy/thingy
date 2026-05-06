@@ -39,105 +39,6 @@ const SIGNUP_BONUS = 1000;
 // Deep link scheme — must match AndroidManifest.xml and Info.plist
 export const OAUTH_REDIRECT = 'thingy://auth/callback';
 
-async function buildUserFromSupabase(supabaseUser: any): Promise<AuthUser> {
-  console.log('[Auth] buildUserFromSupabase - user ID:', supabaseUser.id);
-  
-  try {
-    // Add timeout to prevent infinite hanging
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 10000)
-    );
-    
-    const fetchPromise = supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', supabaseUser.id)
-      .single();
-    
-    console.log('[Auth] Fetching profile from database...');
-    const { data: profile, error: fetchError } = await Promise.race([fetchPromise, timeoutPromise]) as any;
-    console.log('[Auth] Profile fetch complete - found:', !!profile, 'error:', fetchError?.code);
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      console.error('[Auth] Error fetching profile:', fetchError);
-    }
-
-    const isNew = !profile;
-    console.log('[Auth] Is new user:', isNew);
-
-  if (isNew) {
-    const username =
-      supabaseUser.user_metadata?.full_name?.replace(/\s+/g, '_') ??
-      `Player_${Math.floor(Math.random() * 9999)}`;
-    
-    console.log('[Auth] Creating new profile with username:', username);
-    const { error: insertError } = await supabase.from('profiles').insert({
-      id: supabaseUser.id,
-      username,
-      tokens: SIGNUP_BONUS,
-    });
-    
-    if (insertError) {
-      console.error('[Auth] Error creating profile:', insertError);
-      throw insertError;
-    }
-    
-    console.log('[Auth] Profile created successfully');
-    try { await supabase.rpc('grant_signup_bonus', { p_user_id: supabaseUser.id }); } catch (e) { 
-      console.log('[Auth] grant_signup_bonus RPC failed (ok):', e); 
-    }
-
-    return {
-      id: supabaseUser.id,
-      email: supabaseUser.email,
-      username,
-      avatarUrl: supabaseUser.user_metadata?.avatar_url,
-      isGuest: false,
-      tokens: SIGNUP_BONUS,
-      coins: 100,
-      level: 1,
-      xp: 0,
-      totalWins: 0,
-      winStreak: 0,
-      gamesPlayed: 0,
-    };
-  }
-
-    console.log('[Auth] Returning existing profile for user:', profile.username);
-    return {
-      id: supabaseUser.id,
-      email: supabaseUser.email,
-      username: profile.username,
-      avatarUrl: supabaseUser.user_metadata?.avatar_url,
-      isGuest: false,
-      tokens: profile.tokens ?? SIGNUP_BONUS,
-      coins: profile.coins ?? 100,
-      level: profile.level ?? 1,
-      xp: profile.xp ?? 0,
-      totalWins: profile.total_wins ?? 0,
-      winStreak: profile.win_streak ?? 0,
-      gamesPlayed: profile.games_played ?? 0,
-    };
-  } catch (error) {
-    console.error('[Auth] buildUserFromSupabase failed:', error);
-    // Return a minimal user object to prevent app from hanging
-    console.log('[Auth] Creating fallback user object');
-    return {
-      id: supabaseUser.id,
-      email: supabaseUser.email,
-      username: supabaseUser.user_metadata?.full_name?.replace(/\s+/g, '_') ?? `Player_${Math.floor(Math.random() * 9999)}`,
-      avatarUrl: supabaseUser.user_metadata?.avatar_url,
-      isGuest: false,
-      tokens: SIGNUP_BONUS,
-      coins: 100,
-      level: 1,
-      xp: 0,
-      totalWins: 0,
-      winStreak: 0,
-      gamesPlayed: 0,
-    };
-  }
-}
 
 export const useAuthStore = create<AuthStore>()(
   persist(
@@ -152,27 +53,40 @@ export const useAuthStore = create<AuthStore>()(
         supabase.auth.onAuthStateChange(async (event, session) => {
           console.log('[Auth] onAuthStateChange:', event, !!session?.user);
 
-          // Handle both SIGNED_IN and INITIAL_SESSION (session restored on app open)
           if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-            // Skip if we already have this exact user loaded
             if (get().user?.id === session.user.id) {
               set({ isLoading: false, isInitialized: true });
               return;
             }
-            try {
-              const authUser = await buildUserFromSupabase(session.user);
-              set({ user: authUser, isLoading: false, isInitialized: true });
-            } catch (err) {
-              console.error('[Auth] buildUser failed:', err);
-              set({ isLoading: false, isInitialized: true });
-            }
+            // Don't await a DB call here — onAuthStateChange fires mid-setSession,
+            // so the auth headers aren't committed yet and the query hangs.
+            // Instead, set user immediately from JWT metadata and load real DB
+            // values in the background once setSession fully resolves.
+            const meta = session.user.user_metadata ?? {};
+            set({
+              user: {
+                id: session.user.id,
+                email: session.user.email,
+                username: meta.full_name?.replace(/\s+/g, '_') ?? `Player_${Math.floor(Math.random() * 9999)}`,
+                avatarUrl: meta.avatar_url,
+                isGuest: false,
+                tokens: SIGNUP_BONUS,
+                coins: 100,
+                level: 1,
+                xp: 0,
+                totalWins: 0,
+                winStreak: 0,
+                gamesPlayed: 0,
+              },
+              isLoading: false,
+              isInitialized: true,
+            });
+            setTimeout(() => get().refreshProfile(), 1000);
           } else if (event === 'SIGNED_OUT') {
             set({ user: null, isLoading: false, isInitialized: true });
           } else if (event === 'INITIAL_SESSION') {
-            // INITIAL_SESSION with no session
             set({ isLoading: false, isInitialized: true });
           } else {
-            // TOKEN_REFRESHED, etc.
             set({ isLoading: false });
           }
         });
@@ -267,7 +181,11 @@ export const useAuthStore = create<AuthStore>()(
             set({ isLoading: false });
           } else {
             console.log('[Auth] setSession SUCCESS - session user:', data?.session?.user?.id);
-            console.log('[Auth] Waiting for onAuthStateChange to fire...');
+            // onAuthStateChange fires during setSession (before it resolves), so the
+            // profile fetch inside buildUserFromSupabase races against auth header
+            // propagation and often times out. Refresh the real profile now that the
+            // session is fully committed.
+            setTimeout(() => get().refreshProfile(), 500);
           }
         } catch (err) {
           console.error('[Auth] OAuth callback error:', err);
