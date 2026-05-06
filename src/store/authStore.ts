@@ -56,6 +56,7 @@ export const useAuthStore = create<AuthStore>()(
           if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
             if (get().user?.id === session.user.id) {
               set({ isLoading: false, isInitialized: true });
+              setTimeout(() => get().refreshProfile(), 500);
               return;
             }
             // Don't await a DB call here — onAuthStateChange fires mid-setSession,

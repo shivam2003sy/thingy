@@ -9,7 +9,7 @@ export interface PredictionOption {
   id: string;
   label: string;
   description: string;
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert';
+  difficulty: 'runs' | 'action' | 'combo' | 'easy' | 'medium' | 'hard' | 'expert';
   multiplier: number;
   category: string;
   is_active: boolean;
@@ -36,12 +36,14 @@ interface Match {
 
 interface PredictionWindow {
   match_id: string;
+  innings: number;
   over_number: number;
   countdown_seconds: number;
   ends_at: string;
   match_name: string;
   team1: any;
   team2: any;
+  batting_team: 'team1' | 'team2';
   striker: string;
   bowler: string;
 }
@@ -71,6 +73,16 @@ export interface UserPredictionResult {
   mult: number;
 }
 
+export type HotPicks = Map<string, number>; // predictionId → pick count
+
+export interface OverHistoryEntry {
+  over_number: number;
+  balls: string[];
+  stats: LiveStats;
+  userResults: UserPredictionResult[];
+  totalWon: number;
+}
+
 interface OverPredictionStore {
   predictionOptions: PredictionOption[];
   optionsLoading: boolean;
@@ -86,6 +98,10 @@ interface OverPredictionStore {
   selectedPredictions: Set<string>;
   tokensBet: number;
   channel: RealtimeChannel | null;
+  hotPicks: HotPicks;
+  hotPicksTotal: number;
+  pendingWindow: PredictionWindow | null;
+  overHistory: OverHistoryEntry[];
 
   fetchPredictionOptions: () => Promise<void>;
   fetchLiveMatches: () => Promise<void>;
@@ -95,7 +111,8 @@ interface OverPredictionStore {
   deselectPrediction: (predictionId: string) => void;
   setTokensBet: (amount: number) => void;
   submitPredictions: (userId: string, username: string) => Promise<void>;
-  fetchUserResults: (matchId: string, overNumber: number, userId: string) => Promise<void>;
+  fetchUserResults: (matchId: string, overNumber: number, innings: number, userId: string) => Promise<void>;
+  fetchHotPicks: (matchId: string, overNumber: number) => Promise<void>;
   clearResults: () => void;
 }
 
@@ -114,8 +131,12 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
   isWindowOpen: false,
   isLocked: false,
   selectedPredictions: new Set(),
-  tokensBet: 20,
+  tokensBet: 25,
   channel: null,
+  hotPicks: new Map(),
+  hotPicksTotal: 0,
+  pendingWindow: null,
+  overHistory: [],
 
   // Fetch active prediction options from DB — this is the single source of truth
   // for labels, descriptions, multipliers, and difficulty. No rebuild needed to update.
@@ -155,14 +176,27 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
     channel
       .on('broadcast', { event: 'prediction_window_open' }, ({ payload }) => {
         if (payload.match_id !== matchId) return;
-        set({
-          predictionWindow: payload,
-          isWindowOpen: true,
-          isLocked: false,
-          selectedPredictions: new Set(),
-          liveStats: null,
-          overResult: null,
-        });
+        const { overResult, predictionWindow } = get();
+        const sameInnings = predictionWindow ? predictionWindow.innings === payload.innings : true;
+        if (overResult && sameInnings) {
+          // Result modal still showing for same innings — park until user dismisses
+          set({ pendingWindow: payload });
+        } else {
+          // Different innings or no result showing — apply immediately, clear any stale result
+          set({
+            predictionWindow: payload,
+            isWindowOpen: true,
+            isLocked: false,
+            selectedPredictions: new Set(),
+            liveStats: null,
+            overResult: null,
+            userResults: [],
+            totalWon: 0,
+            hotPicks: new Map(),
+            hotPicksTotal: 0,
+            pendingWindow: null,
+          });
+        }
       })
       .on('broadcast', { event: 'prediction_window_locked' }, ({ payload }) => {
         if (payload.match_id !== matchId) return;
@@ -192,7 +226,7 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
         if (payload.match_id !== matchId) return;
         set({ overResult: payload, isLocked: false, isWindowOpen: false, liveStats: null });
         supabase.auth.getUser().then(({ data }) => {
-          if (data?.user?.id) get().fetchUserResults(matchId, payload.over_number, data.user.id);
+          if (data?.user?.id) get().fetchUserResults(matchId, payload.over_number, payload.innings ?? 1, data.user.id);
         });
       })
       .subscribe();
@@ -215,11 +249,12 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
             isLocked: false,
             predictionWindow: {
               match_id: matchId,
+              innings: data.innings ?? 1,
               over_number: data.over_number,
               countdown_seconds: Math.max(0, Math.ceil((new Date(data.countdown_ends_at).getTime() - Date.now()) / 1000)),
               ends_at: data.countdown_ends_at,
               match_name: get().currentMatch?.match_name || '',
-              team1: {}, team2: {}, striker: '', bowler: '',
+              team1: {}, team2: {}, batting_team: 'team1', striker: '', bowler: '',
             },
           });
         } else {
@@ -246,7 +281,7 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
 
   unsubscribe: () => {
     const { channel } = get();
-    if (channel) { channel.unsubscribe(); set({ channel: null }); }
+    if (channel) { channel.unsubscribe(); set({ channel: null, overHistory: [], pendingWindow: null }); }
   },
 
   selectPrediction: (predictionId: string) => {
@@ -272,6 +307,7 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
       const opt = predictionOptions.find(o => o.id === predictionId);
       return {
         match_id: predictionWindow.match_id,
+        innings: predictionWindow.innings ?? 1,
         over_number: predictionWindow.over_number,
         user_id: userId,
         prediction_id: predictionId,
@@ -289,15 +325,17 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
       }
     }
     set({ isLocked: true, isWindowOpen: false });
+    // Fetch hot picks after locking in so user can see what others picked
+    get().fetchHotPicks(predictionWindow.match_id, predictionWindow.over_number);
   },
 
-  fetchUserResults: async (matchId: string, overNumber: number, userId: string) => {
-    await new Promise<void>(resolve => setTimeout(resolve, 2000));
+  fetchUserResults: async (matchId: string, overNumber: number, innings: number, userId: string) => {
+    await new Promise<void>(resolve => setTimeout(resolve, 3000));
 
     const { data: rows } = await supabase
       .from('over_predictions')
       .select('prediction_id, won, tokens_won, tokens_bet')
-      .eq('match_id', matchId).eq('over_number', overNumber).eq('user_id', userId);
+      .eq('match_id', matchId).eq('over_number', overNumber).eq('innings', innings).eq('user_id', userId);
 
     if (!rows) return;
 
@@ -310,12 +348,15 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
       if (!existing || (r.won !== null && existing.won === null)) seen.set(r.prediction_id, r);
     }
 
-    const userResults: UserPredictionResult[] = Array.from(seen.values()).map((r: any) => ({
-      predictionId: r.prediction_id,
-      won: r.won ?? false,
-      tokensWon: r.tokens_won ?? 0,
-      mult: multMap.get(r.prediction_id) ?? 2,
-    }));
+    // Only show graded predictions (won != null) — ungraded means over result hasn't run yet
+    const userResults: UserPredictionResult[] = Array.from(seen.values())
+      .filter((r: any) => r.won !== null)
+      .map((r: any) => ({
+        predictionId: r.prediction_id,
+        won: r.won,
+        tokensWon: r.tokens_won ?? 0,
+        mult: multMap.get(r.prediction_id) ?? 2,
+      }));
 
     const totalWon = userResults.reduce((sum, r) => sum + (r.won ? r.tokensWon : 0), 0);
     set({ userResults, totalWon });
@@ -324,7 +365,51 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
     useAuthStore.getState().refreshProfile();
   },
 
-  clearResults: () => set({ overResult: null, userResults: [], totalWon: 0 }),
+  fetchHotPicks: async (matchId: string, overNumber: number) => {
+    const { data } = await supabase
+      .from('over_predictions')
+      .select('prediction_id')
+      .eq('match_id', matchId)
+      .eq('over_number', overNumber);
+
+    if (!data) return;
+    const counts = new Map<string, number>();
+    for (const row of data) {
+      counts.set(row.prediction_id, (counts.get(row.prediction_id) ?? 0) + 1);
+    }
+    set({ hotPicks: counts, hotPicksTotal: data.length });
+  },
+
+  clearResults: () => {
+    const { overResult, userResults, totalWon, overHistory, pendingWindow } = get();
+
+    // Archive this over into history before clearing
+    const newHistory: OverHistoryEntry[] = overResult
+      ? [{ over_number: overResult.over_number, balls: overResult.balls ?? [], stats: overResult.stats, userResults, totalWon }, ...overHistory]
+      : overHistory;
+
+    if (pendingWindow) {
+      // Next over was already announced while result was showing — apply it now
+      set({
+        overResult: null, userResults: [], totalWon: 0,
+        hotPicks: new Map(), hotPicksTotal: 0,
+        overHistory: newHistory,
+        predictionWindow: pendingWindow,
+        isWindowOpen: true,
+        isLocked: false,
+        selectedPredictions: new Set(),
+        liveStats: null,
+        pendingWindow: null,
+      });
+    } else {
+      set({
+        overResult: null, userResults: [], totalWon: 0,
+        hotPicks: new Map(), hotPicksTotal: 0,
+        overHistory: newHistory,
+        pendingWindow: null,
+      });
+    }
+  },
 }));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

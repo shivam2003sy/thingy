@@ -17,20 +17,19 @@ type Props = {
   route: RouteProp<any, 'OverPrediction'>;
 };
 
-type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
+type Difficulty = 'runs' | 'action' | 'combo';
 
-const TOKEN_STEPS = [5, 10, 20, 50];
-const MAX_PICKS   = 5;
+const TOKEN_STEPS = [10, 25, 50, 100];
+const MAX_PICKS   = 3;
 
 const DIFF_COLORS: Record<Difficulty, string> = {
-  easy:   '#22C55E',
-  medium: '#F59E0B',
-  hard:   '#3B82F6',
-  expert: '#EF4444',
+  runs:   '#3B82F6',
+  action: '#F59E0B',
+  combo:  '#A855F7',
 };
 
-const DIFF_LABELS: Record<Difficulty, string> = {
-  easy: 'EASY', medium: 'MEDIUM', hard: 'HARD', expert: 'EXPERT',
+const DIFF_LABELS: Record<string, string> = {
+  runs: '🔢 Runs', action: '🏏 Action', combo: '⚡ Combo',
 };
 
 // ─── Ball display ─────────────────────────────────────────────────────────────
@@ -94,6 +93,10 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
     isLocked,
     selectedPredictions,
     tokensBet,
+    hotPicks,
+    hotPicksTotal,
+    pendingWindow,
+    overHistory,
     subscribeToMatch,
     unsubscribe,
     selectPrediction,
@@ -103,7 +106,7 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
     clearResults,
   } = useOverPredictionStore();
 
-  const [activeDiff, setActiveDiff] = useState<Difficulty>('easy');
+  const [activeDiff, setActiveDiff] = useState<Difficulty>('runs');
   const [resultVisible, setResultVisible] = useState(false);
   const liveDot = useRef(new Animated.Value(1)).current;
 
@@ -128,9 +131,8 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
   const countdown = useCountdown(predictionWindow?.ends_at ? new Date(predictionWindow.ends_at).getTime() : 0);
   const windowOpen = !!predictionWindow && countdown > 0 && !isLocked;
 
-  // Unique difficulties in the loaded options (preserves order: easy→medium→hard→expert)
   const availableDiffs = useMemo(() => {
-    const order: Difficulty[] = ['easy', 'medium', 'hard', 'expert'];
+    const order: Difficulty[] = ['runs', 'action', 'combo'];
     const present = new Set(predictionOptions.map(o => o.difficulty));
     return order.filter(d => present.has(d));
   }, [predictionOptions]);
@@ -288,18 +290,15 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
               {/* Difficulty tabs — only show tabs that exist in DB */}
               <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
                 {availableDiffs.map(d => {
-                  const color = DIFF_COLORS[d];
+                  const color = DIFF_COLORS[d as Difficulty] ?? '#888';
                   const active = activeDiff === d;
-                  const diffOptions = predictionOptions.filter(o => o.difficulty === d);
-                  const repMult = diffOptions[0]?.multiplier ?? 0;
                   return (
                     <TouchableOpacity
                       key={d}
-                      onPress={() => setActiveDiff(d)}
-                      style={{ flex: 1, paddingVertical: 7, borderRadius: 10, alignItems: 'center', backgroundColor: active ? `${color}25` : 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: active ? color : 'rgba(255,255,255,0.1)' }}
+                      onPress={() => setActiveDiff(d as Difficulty)}
+                      style={{ flex: 1, paddingVertical: 9, borderRadius: 12, alignItems: 'center', backgroundColor: active ? `${color}22` : 'rgba(255,255,255,0.05)', borderWidth: 1.5, borderColor: active ? color : 'rgba(255,255,255,0.1)' }}
                     >
-                      <Text style={{ color: active ? color : 'rgba(255,255,255,0.4)', fontWeight: '700', fontSize: 10, letterSpacing: 0.5 }}>{DIFF_LABELS[d]}</Text>
-                      <Text style={{ color: active ? color : 'rgba(255,255,255,0.3)', fontSize: 9, marginTop: 1 }}>{repMult}×</Text>
+                      <Text style={{ color: active ? color : 'rgba(255,255,255,0.45)', fontWeight: '800', fontSize: 12 }}>{DIFF_LABELS[d] ?? d}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -309,7 +308,7 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
               <View style={{ gap: 8, marginBottom: 14 }}>
                 {visibleOptions.map(opt => {
                   const selected = selectedPredictions.has(opt.id);
-                  const color    = DIFF_COLORS[opt.difficulty];
+                  const color    = DIFF_COLORS[opt.difficulty as Difficulty] ?? '#888';
                   const disabled = !windowOpen || (!selected && selectedPredictions.size >= MAX_PICKS);
                   const payout   = tokensBet * opt.multiplier;
                   return (
@@ -366,28 +365,48 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
 
               {windowOpen && selectedPredictions.size === 0 && (
                 <View style={{ alignItems: 'center', paddingVertical: 4 }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Pick up to {MAX_PICKS} predictions above</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>Pick up to {MAX_PICKS} · switch tabs to see all options</Text>
                 </View>
               )}
             </>
           )}
 
-          {/* Locked — show submitted picks */}
+          {/* Locked — show submitted picks + hot picks % */}
           {isLocked && (
             <View style={{ gap: 8 }}>
               {Array.from(selectedPredictions).map(id => {
                 const opt = predictionOptions.find(o => o.id === id);
                 if (!opt) return null;
-                const color = DIFF_COLORS[opt.difficulty];
+                const color = DIFF_COLORS[opt.difficulty as Difficulty] ?? '#888';
+                const pickCount = hotPicks.get(id) ?? 0;
+                const pickPct = hotPicksTotal > 0 ? Math.round((pickCount / hotPicksTotal) * 100) : null;
                 return (
-                  <View key={id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: `${color}15`, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: `${color}35` }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={{ fontSize: 16 }}>🔒</Text>
-                      <Text style={{ color, fontWeight: '700', fontSize: 14 }}>{opt.label}</Text>
+                  <View key={id} style={{ backgroundColor: `${color}15`, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: `${color}35` }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: pickPct !== null ? 8 : 0 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 16 }}>🔒</Text>
+                        <View>
+                          <Text style={{ color, fontWeight: '800', fontSize: 14 }}>{opt.label}</Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 1 }}>{opt.description}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
+                        🪙{tokensBet} → 🪙{tokensBet * opt.multiplier}
+                      </Text>
                     </View>
-                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-                      🪙{tokensBet} → win 🪙{tokensBet * opt.multiplier}
-                    </Text>
+                    {pickPct !== null && (
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, fontWeight: '600' }}>
+                            🔥 {pickPct}% of players picked this
+                          </Text>
+                          <Text style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10 }}>{pickCount} picks</Text>
+                        </View>
+                        <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
+                          <View style={{ height: 3, width: `${pickPct}%`, backgroundColor: color, borderRadius: 2 }} />
+                        </View>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -396,12 +415,83 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
         </View>
 
         {!predictionWindow && !isLocked && (
-          <View style={{ alignItems: 'center', paddingVertical: 48 }}>
-            <Text style={{ fontSize: 52 }}>🏏</Text>
+          <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+            <Text style={{ fontSize: 48 }}>🏏</Text>
             <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '800', marginTop: 12 }}>Waiting for next over...</Text>
             <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 6, textAlign: 'center', paddingHorizontal: 40 }}>
               Prediction window opens before each over begins
             </Text>
+          </View>
+        )}
+
+        {/* Past overs history */}
+        {overHistory.length > 0 && (
+          <View style={{ marginHorizontal: 12, marginTop: 8 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 10 }}>
+              PAST OVERS THIS MATCH
+            </Text>
+            <View style={{ gap: 8 }}>
+              {overHistory.map(entry => {
+                const won = entry.userResults.filter(r => r.won).length;
+                const total = entry.userResults.length;
+                const hasResult = total > 0;
+                return (
+                  <View key={entry.over_number} style={{
+                    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14,
+                    padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+                  }}>
+                    {/* Header row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '700' }}>
+                        Over {entry.over_number}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>{entry.stats.runs} runs</Text>
+                        {hasResult && (
+                          <View style={{
+                            backgroundColor: won > 0 ? 'rgba(74,222,128,0.15)' : 'rgba(239,68,68,0.1)',
+                            borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
+                          }}>
+                            <Text style={{ color: won > 0 ? '#4ADE80' : '#F87171', fontWeight: '800', fontSize: 11 }}>
+                              {won > 0 ? `+${entry.totalWon}🪙` : 'No win'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Ball bubbles */}
+                    <View style={{ flexDirection: 'row', gap: 5, marginBottom: hasResult ? 10 : 0 }}>
+                      {entry.balls.map((b, i) => {
+                        const cfg = (BALL_COLOR[b] ?? { bg: '#475569', label: '?' });
+                        return (
+                          <View key={i} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: cfg.bg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 10 }}>{cfg.label}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {/* User predictions */}
+                    {hasResult && (
+                      <View style={{ gap: 4 }}>
+                        {entry.userResults.map(r => (
+                          <View key={r.predictionId} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ fontSize: 12 }}>{r.won ? '✅' : '❌'}</Text>
+                              <Text style={{ color: r.won ? '#4ADE80' : 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '600' }}>
+                                {predictionOptions.find(o => o.id === r.predictionId)?.label ?? r.predictionId}
+                              </Text>
+                            </View>
+                            {r.won && <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 12 }}>+{r.tokensWon}🪙</Text>}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -414,6 +504,7 @@ export default function OverPredictionScreen({ navigation, route }: Props) {
           results={userResults}
           totalWon={totalWon}
           anyWon={totalWon > 0}
+          nextOverReady={!!pendingWindow}
           stats={{
             sixes: overResult.stats.sixes,
             fours: overResult.stats.fours,

@@ -12,10 +12,11 @@ interface PredictionResult {
 interface Props {
   visible: boolean;
   over: number;
-  balls: string[];   // e.g. ['dot','four','six','wicket','single','dot']
+  balls: string[];
   results: PredictionResult[];
   totalWon: number;
   anyWon: boolean;
+  nextOverReady?: boolean;
   stats: {
     sixes: number; fours: number; wickets: number;
     wides: number; noBalls: number; dots: number; totalRuns: number;
@@ -59,7 +60,7 @@ function BallBubble({ outcome }: { outcome: string }) {
   );
 }
 
-export function OverPredictionResult({ visible, over, balls, results, totalWon, anyWon, stats, onDismiss }: Props) {
+export function OverPredictionResult({ visible, over, balls, results, totalWon, anyWon, nextOverReady, stats, onDismiss }: Props) {
   const scaleAnim   = useRef(new Animated.Value(0.85)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -181,19 +182,36 @@ export function OverPredictionResult({ visible, over, balls, results, totalWon, 
               </View>
             )}
 
-            {/* Next over hint */}
-            <View style={{
-              backgroundColor: 'rgba(74,222,128,0.08)', borderRadius: 14, padding: 14,
-              alignItems: 'center', marginBottom: 8,
-            }}>
-              <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14 }}>
-                🎯 Prediction window for Over {over + 1} is opening…
-              </Text>
-            </View>
-
-            <TouchableOpacity onPress={onDismiss} style={{ alignItems: 'center', paddingVertical: 8 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>tap to dismiss</Text>
-            </TouchableOpacity>
+            {nextOverReady ? (
+              <TouchableOpacity
+                onPress={onDismiss}
+                style={{
+                  backgroundColor: '#4ADE80', borderRadius: 14,
+                  paddingVertical: 16, alignItems: 'center', marginBottom: 8,
+                }}
+              >
+                <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>
+                  ⚡ Over {over + 1} is LIVE — Predict Now!
+                </Text>
+                <Text style={{ color: 'rgba(0,0,0,0.55)', fontSize: 12, marginTop: 3 }}>
+                  Tap to go to prediction window
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <View style={{
+                  backgroundColor: 'rgba(74,222,128,0.08)', borderRadius: 14, padding: 14,
+                  alignItems: 'center', marginBottom: 8,
+                }}>
+                  <Text style={{ color: '#4ADE80', fontWeight: '700', fontSize: 14 }}>
+                    🎯 Waiting for Over {over + 1} to start…
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={onDismiss} style={{ alignItems: 'center', paddingVertical: 8 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13 }}>tap to dismiss</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </ScrollView>
         </Animated.View>
       </View>
