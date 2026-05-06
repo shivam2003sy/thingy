@@ -339,13 +339,6 @@ export default function HomeScreen({ navigation }: Props) {
             70 matches · tap live to predict
           </Text>
         </View>
-        <View style={{
-          backgroundColor: 'rgba(74,222,128,0.1)', borderRadius: 10,
-          paddingHorizontal: 10, paddingVertical: 5,
-          borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)',
-        }}>
-          <Text style={{ color: '#4ADE80', fontWeight: '800', fontSize: 11 }}>BALL RUSH</Text>
-        </View>
       </View>
 
       {/* Legend */}

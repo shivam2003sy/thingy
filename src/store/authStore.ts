@@ -215,20 +215,37 @@ export const useAuthStore = create<AuthStore>()(
       refreshProfile: async () => {
         const { user } = get();
         if (!user || user.isGuest) return;
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+
         if (data) {
           set({
             user: {
               ...user,
-              tokens: data.tokens,
-              coins: data.coins,
-              level: data.level,
-              xp: data.xp,
-              totalWins: data.total_wins,
-              winStreak: data.win_streak,
-              gamesPlayed: data.games_played,
+              username: data.username ?? user.username,
+              tokens: data.tokens ?? SIGNUP_BONUS,
+              coins: data.coins ?? 100,
+              level: data.level ?? 1,
+              xp: data.xp ?? 0,
+              totalWins: data.total_wins ?? 0,
+              winStreak: data.win_streak ?? 0,
+              gamesPlayed: data.games_played ?? 0,
             },
           });
+          return;
+        }
+
+        // No profile found → new user. Create one now (session is fully committed at this point).
+        if (error?.code === 'PGRST116') {
+          const username = user.username ?? `Player_${Math.floor(Math.random() * 9999)}`;
+          const { error: insertError } = await supabase.from('profiles').insert({
+            id: user.id,
+            username,
+            tokens: SIGNUP_BONUS,
+          });
+          if (!insertError) {
+            try { await supabase.rpc('grant_signup_bonus', { p_user_id: user.id }); } catch (_) {}
+            set({ user: { ...user, username, tokens: SIGNUP_BONUS, coins: 100 } });
+          }
         }
       },
     }),

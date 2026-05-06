@@ -12,10 +12,9 @@ import { T } from '../config/theme';
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Auth'> };
 
 const FEATURES = [
-  { icon: '⚡', label: '1v1 Real-time Cricket Battles' },
-  { icon: '🏆', label: 'Community Prediction Contests' },
   { icon: '🪙', label: '1,000 Free Tokens on Signup' },
   { icon: '📊', label: 'Live IPL Match Data' },
+  { icon: '🎯', label: 'Predict Every Over & Win Tokens' },
 ];
 
 export default function AuthScreen({ navigation }: Props) {
@@ -59,7 +58,7 @@ export default function AuthScreen({ navigation }: Props) {
           </View>
           <Text style={{ color: T.text, fontSize: 32, fontWeight: '800', letterSpacing: 0.5 }}>Thingy</Text>
           <Text style={{ color: T.primary, fontSize: 13, fontWeight: '700', letterSpacing: 2.5, marginTop: 6 }}>
-            PREDICT · BATTLE · WIN
+            PREDICT · WIN
           </Text>
         </View>
 
