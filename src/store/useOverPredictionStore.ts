@@ -416,6 +416,14 @@ export const useOverPredictionStore = create<OverPredictionStore>((set, get) => 
 
 function scoreFromPayload(matchScore: any, current: Match) {
   if (!matchScore) return {};
+  const batting = matchScore.batting_team ?? 'team1';
+  if (batting === 'team2') {
+    return {
+      team2_score: matchScore.score ?? current.team2_score,
+      team2_wickets: matchScore.wickets ?? current.team2_wickets,
+      team2_overs: matchScore.overs ?? current.team2_overs,
+    };
+  }
   return {
     team1_score: matchScore.score ?? current.team1_score,
     team1_wickets: matchScore.wickets ?? current.team1_wickets,
